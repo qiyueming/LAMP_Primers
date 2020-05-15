@@ -17,7 +17,7 @@ def GC_ratio(seq):
 
 def analysis_pipe(sequeces):
     """
-    analysis pipe. 
+    analysis pipe.
     """
 
 REF.genes
