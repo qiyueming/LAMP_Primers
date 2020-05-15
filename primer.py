@@ -505,6 +505,3 @@ def main2(target=None,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
 
     SavePrimerSet.write()
 
-
-
-main2('N')
