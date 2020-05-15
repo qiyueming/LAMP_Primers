@@ -55,7 +55,8 @@ def draw_hairpin(seq):
 
 
 
-
+def GC_ratio(seq):
+    return (seq.count('G')+seq.count('C'))/len(seq)
 
 def time_filter(F,number=1000):
     f = F()
@@ -76,7 +77,7 @@ def TmFilter(Tm=(60,65), return_value=False):
 def GCfilter(ratio):
     "return a GC ratio filter"
     def wrap(seq):
-        r = (seq.count('G')+seq.count('C'))/len(seq)
+        r = GC_ratio(seq)
         return (r >=ratio[0] and r<=ratio[1])
     return wrap
 
