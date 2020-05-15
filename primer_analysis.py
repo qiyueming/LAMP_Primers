@@ -14,6 +14,12 @@ primerset[0]
 def GC_ratio(seq):
     return (seq.count('G')+seq.count('C'))/len(seq)
 
+
+def analysis_pipe(sequeces):
+    """
+    analysis pipe. 
+    """
+
 REF.genes
 REFape[0:10]
 
