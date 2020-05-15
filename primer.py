@@ -1,16 +1,17 @@
-from ape import APE
+from ape import REFape
 from mymodule import revcomp
 import primer3
 # from mymodule import ViennaRNA
 # from mymodule.RNAstructure import RNA
 # import pandas as pd
-from align_sequence import Reference
+from align_sequence import REF,BAT
 from primer_para import *
 from datetime import datetime
 from Levenshtein import distance
 # from old_primer import print_ascii_structure
 from mymodule import ft,ProgressBar
 from ape import read_primerset_excel
+from collections import Counter
 
 
 
@@ -49,15 +50,12 @@ def draw_hairpin(seq):
 
 
 # file = '/Users/hui/Desktop/WFH papers/COVID-19/Virus Genes/viral_genome/all_align_0512.csv'
-alnfile = './viral_genome/all_align_0512.aln'
 
-REF = Reference(alnfile=alnfile)
 
-BAT = Reference(alnfile='./viral_genome/CoV2+Bat.aln')
 
-REFape = APE('./viral_genome/cov2_ref/HCoV2 NC045512.2.ape')
 
-REF.label_gene(REFape)
+
+
 
 def time_filter(F,number=1000):
     f = F()
@@ -203,7 +201,9 @@ class PrimerSetHandler:
     def __init__(self,path,prefix,batchcount=100):
         self.count = 0
         self.data = [('set','name','seq','time')]
-        self.path = path
+
+        # if path exist
+        self.path = path.replace('.csv','')+datetime.now().strftime('%Y%m%d_%H:%M:%S')+'.csv'
         self.prefix = prefix
         self.batchcount = batchcount
 
@@ -213,7 +213,7 @@ class PrimerSetHandler:
         para = [i for i in lines.split('\n') if i and i[0].isalpha()]
         with open(self.path,'wt') as f:
             f.write('\n'.join(para))
-            f.write(f"\n====> Started On {datetime.now().strftime('%Y-%m-%d %H:%M:%S ')} <====")
+            f.write(f"\n====> Started On {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} <====")
 
     def __call__(self,data):
         self.count +=1
@@ -242,6 +242,11 @@ def main(target=None,step=1,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
     """
     start from F3 to B3.
     """
+    pDimerfilter = PrimerDimerfilter(PrimerDimerTm)
+    hPfilter = Hairpinfilter(HairpindG)
+    LoopHPfilter = Hairpinfilter(LoopHairpindG)
+    hOmofilterF = HoMofilter(BatHomology,BatHomologyEnd,'F')
+    hOmofilterR = HoMofilter(BatHomology,BatHomologyEnd,'R')
 
     F3filter = CombFilter(TmFilter(P3Tm),GCfilter(GCratio),ESfilter(E3),ESCfilter(N=ESC),Hairpinfilter(HairpindG),PrimerComplexityfilter())
     F2filter = CombFilter(TmFilter(P2Tm),GCfilter(GCratio),ESfilter(E3),ESCfilter(N=ESC),PrimerComplexityfilter())
@@ -253,24 +258,21 @@ def main(target=None,step=1,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
     LFcfilter = RCwrapper(LBfilter)
 
     if isinstance(target,str):
-        F1_start, F1_end = REF.genes[target]
+        F3_start, F3_end = REF.genes[target]
     else:
-        F1_start, F1_end = target
+        F3_start, F3_end = target
         target = 'W'
 
     stop = False
 
     primerset_counter = 0
 
-    SavePrimerSet=PrimerSetHandler(savepath,prefix=target[0])
+    SavePrimerSet=PrimerSetHandler(savepath,prefix=target[0],batchcount=5)
 
-    pDimerfilter = PrimerDimerfilter(PrimerDimerTm)
-    hPfilter = Hairpinfilter(HairpindG)
-    LoopHPfilter = Hairpinfilter(LoopHairpindG)
-    hOmofilter = HoMofilter(BatHomology,BatHomologyEnd)
-
-    F3iter = REF.primer_iter(F1_start,F1_end,P3L,PInclu,F3filter,step)
+    progress = ProgressBar(limits=(F3_start,F3_end))
+    F3iter = REF.primer_iter(F3_start,F3_end,P3L,PInclu,F3filter,step)
     for F3,(sF3,eF3) in F3iter:
+        progress(sF3)
         if stop: break
         F2_start = eF3 + g1[0]
         F2_end = eF3 + g1[1]
@@ -309,6 +311,8 @@ def main(target=None,step=1,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
                         B3c_start = eB2c + g5[0]
                         B3c_end = eB2c + g5[1]
                         BIP = B1c + revcomp(B2c)
+                        maxloopr =  REF.ref[eB1c:eB2c].replace('-','')[0:59]
+                        if not LoopHPfilter(maxloopr): break
                         if not hPfilter(BIP): continue
                         if not pDimerfilter(BIP,[F3,FIP]): continue
 
@@ -316,7 +320,6 @@ def main(target=None,step=1,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
                         for B3c,(sB3c,eB3c) in B3citer:
                             if stop: break
                             B3 = revcomp(B3c)
-                            if not hPfilter(B3): continue
                             if not pDimerfilter(B3,[F3,FIP,BIP]): continue
 
                             LFfound = False
@@ -335,17 +338,14 @@ def main(target=None,step=1,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
                             if not LBfound: continue
 
                             primerset = (F3,F2,F1,B1c,B2c,B3c,LFc,LB)
-                            if sum(hOmofilter(i) for i in primerset[0:6]) >= 3: # at least 3 of the 6 are satisfied.
-                                SavePrimerSet(primerset)
-                                primerset_counter += 1
-                                if primerset_counter > MAX_primerset:
-                                    stop = True
-
-
-
+                            # if sum([hOmofilterF(i) for i in primerset[0:3]] + [hOmofilterR(i) for i in primerset[3:6]])>=3: # at least 3 of the 6 are satisfied.
+                            SavePrimerSet(primerset)
+                            primerset_counter += 1
+                            if primerset_counter > MAX_primerset:
+                                stop = True
     SavePrimerSet.write()
 
-def main2(target=None,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
+def main_limit_count(target=None,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
     """
     start with F2 -> F1 -> B1 -> B2 -> B3 -> F3 .
     Strong check Homology to bat CoV at F2, B2 and F3, B3.
@@ -382,7 +382,7 @@ def main2(target=None,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
 
     primerset_counter = 0
 
-    SavePrimerSet=PrimerSetHandler(savepath,prefix=target[0])
+    SavePrimerSet=PrimerSetHandler(savepath,prefix=target[0],batchcount=10)
 
     F2iter = REF.primer_iter(A_start+g1[1]+P3L[1],A_end-g6[1]-g5[1]-P3L[1],P2L,PInclu,F2filter,)
 
@@ -399,6 +399,11 @@ def main2(target=None,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
         for F1, (sF1,eF1) in F1iter:
             F1_Count = 0
             if stop:break
+
+            if F2_Count > F2_CountThreshold: # if toomany with samfe F2, break out of F1 loop.
+                F2iter.next_pos(10) # if found many in this position, move F2 forward 10 n.t.
+                break
+
             B1c_start = eF1 + g3[0]
             B1c_end = eF1 + g3[1]
             FIP = revcomp(F1)+F2
@@ -417,6 +422,11 @@ def main2(target=None,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
             for B1c, (sB1c,eB1c) in B1citer:
                 B1c_Count = 0
                 if stop:break
+
+                if F1_Count > F1_CountThreshold:
+                    F1iter.next_pos(5)
+                    break
+
                 B2c_start = eB1c + g4[0]
                 B2c_end = eB1c + g4[1]
 
@@ -424,6 +434,10 @@ def main2(target=None,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
                 for B2c, (sB2c,eB2c) in B2citer:
                     B2c_Count = 0
                     if stop:break
+                    if B1c_Count > B1c_CountThreshold:
+                        B1citer.next_pos(5)
+                        break
+
                     if eB2c - sF2 > g6[1] or eB2c - sF2 < g6[0]: # if there is no room for B2 to satisfy g6.
                         B1citer.next_pos(1000) # end B1 iteration
                         break
@@ -445,6 +459,10 @@ def main2(target=None,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
                     for B3c,(sB3c,eB3c) in B3citer:
                         B3c_Count = 0
                         if stop: break
+                        if B2c_Count > B2c_CountThreshold:
+                            B2citer.next_pos(5)
+                            break
+
                         B3 = revcomp(B3c)
                         if not pDimerfilter(B3,[FIP,BIP]): continue
                         F3_start = sF2-g1[1]-P3L[1]
@@ -453,6 +471,9 @@ def main2(target=None,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
                         F3iter = REF.primer_iter(F3_start,F3_end,P3L,PInclu,F3filter,step=-1)
                         for F3,(sF3,eF3) in F3iter:
                             if stop: break
+                            if B3c_Count >B3c_CountThreshold:
+                                B3citer.next_pos(5)
+                                break
                             if eF3>sF2: continue # in case overlap happened.
                             if not pDimerfilter(F3,[B3,FIP,BIP]): continue
 
@@ -474,7 +495,7 @@ def main2(target=None,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
 
                             primerset = (F3,F2,F1,B1c,B2c,B3c,LFc,LB)
                             # save if 3 of the core primers have homology specificity.
-                            if sum([hOmofilterF(i) for i in primerset[0:3]] + [hOmofilterR(i) for i in primerset[3:6]])>=3:
+                            if sum([hOmofilterF(i) for i in primerset[0:3]] + [hOmofilterR(i) for i in primerset[3:6]])>=2:
                                 SavePrimerSet(primerset)
                                 primerset_counter += 1
                                 F2_Count+=1
@@ -482,35 +503,184 @@ def main2(target=None,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
                                 B1c_Count+=1
                                 B2c_Count+=1
                                 B3c_Count+=1
+
                             # move F2 and everything forward.
                             if primerset_counter > MAX_primerset:
                                 stop = True
+    SavePrimerSet.write()
+    progress.end_bar()
+    print('Runing Finished.')
 
-                            if B3c_Count >B3c_CountThreshold:
-                                B3citer.next_pos(5)
-                                break
+def main_Counter(target=None,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
+    """
+    start with F2 -> F1 -> B1 -> B2 -> B3 -> F3 .
+    Strong check Homology to bat CoV at F2, B2 and F3, B3.
+    check primer complexity.
+    faster adjust on positions.
+    """
+    pDimerfilter = PrimerDimerfilter(PrimerDimerTm)
+    hPfilter = Hairpinfilter(HairpindG)
+    LoopHPfilter = Hairpinfilter(LoopHairpindG)
+    hOmofilterF = HoMofilter(BatHomology,BatHomologyEnd,'F')
+    hOmofilterR = HoMofilter(BatHomology,BatHomologyEnd,'R')
+
+    F3filter = CombFilter(TmFilter(P3Tm),GCfilter(GCratio),ESfilter(E3),
+                          ESCfilter(N=ESC),Hairpinfilter(HairpindG),PrimerComplexityfilter())
+    F2filter = CombFilter(TmFilter(P2Tm),GCfilter(GCratio),ESfilter(E3),
+                          ESCfilter(N=ESC),PrimerComplexityfilter())
+    F1filter = CombFilter(TmFilter(P1Tm),GCfilter(GCratio),ESfilter(E3),ESCfilter(N=ESC),PrimerComplexityfilter())
+    B1cfilter = RCwrapper(F1filter)
+    B2cfilter = RCwrapper(F2filter)
+    B3cfilter = RCwrapper(F3filter)
+
+    LBfilter = CombFilter(TmFilter(LPTm),GCfilter(GCratio),ESfilter(E3),ESCfilter(N=ESC),Hairpinfilter(HairpindG))
+    LFcfilter = RCwrapper(LBfilter)
 
 
-                        if B2c_Count > B2c_CountThreshold:
-                            B2citer.next_pos(5)
-                            break
+    if isinstance(target,str):
+        A_start, A_end = REF.genes[target]
+    else:
+        A_start, A_end = target
+        target = 'W'
 
-                    if B1c_Count > B1c_CountThreshold:
-                        B1citer.next_pos(5)
-                        break
+    Counters = [Counter() for i in range(5)]
+    F1Counter,F3Counter,B1cCounter,B2cCounter,B3cCounter = Counters
 
+    stop = False
 
-                if F1_Count > F1_CountThreshold:
-                    F1iter.next_pos(5)
-                    break
+    primerset_counter = 0
 
+    SavePrimerSet=PrimerSetHandler(savepath,prefix=target[0],batchcount=10)
+
+    F2iter = REF.primer_iter(A_start+g1[1]+P3L[1],A_end-g6[1]-g5[1]-P3L[1],P2L,PInclu,F2filter,)
+
+    progress = ProgressBar(limits=(A_start+g1[1]+P3L[1],A_end-g6[1]-g5[1]-P3L[1]))
+    for F2, (sF2,eF2) in F2iter:
+        progress(sF2)
+        F2_Count = 0
+        if stop:break
+        F1_start = eF2 + g2[0]
+        F1_end = eF2 + g2[1]
+        if not pDimerfilter(F2,[]): continue
+
+        F1iter = REF.primer_iter(F1_start,F1_end,P1L,PInclu,F1filter)
+        for F1, (sF1,eF1) in F1iter:
+            F1_Count = 0
+            if stop:break
             if F2_Count > F2_CountThreshold: # if toomany with samfe F2, break out of F1 loop.
                 F2iter.next_pos(10) # if found many in this position, move F2 forward 10 n.t.
                 break
 
+            B1c_start = eF1 + g3[0]
+            B1c_end = eF1 + g3[1]
+            FIP = revcomp(F1)+F2
+            maxloopfc =  revcomp(REF.ref[sF2:sF1].replace('-','')[0:59])
+            if not LoopHPfilter(maxloopfc):
+                F2iter.next_pos(AdjustStep) # move F2 forward a step.
+                break # break this F1 if strong loop formed.
+            if F1Counter[F1] >= SAME_Fragment_Threshold:continue
+            if not hPfilter(FIP): # if FIP have hairpin move F1 forward 3 n.t.
+                F1iter.next_pos(AdjustStep)
+                continue
+            if not pDimerfilter(FIP,[]):
+                continue
+
+            B1citer = REF.primer_iter(B1c_start,B1c_end,P1L,PInclu,B1cfilter)
+            for B1c, (sB1c,eB1c) in B1citer:
+                B1c_Count = 0
+                if stop:break
+                if F1_Count > F1_CountThreshold:
+                    F1iter.next_pos(5)
+                    break
+                if B1cCounter[B1c] >= SAME_Fragment_Threshold:continue
+                B2c_start = eB1c + g4[0]
+                B2c_end = eB1c + g4[1]
+
+                B2citer = REF.primer_iter(B2c_start,B2c_end,P2L,PInclu,B2cfilter)
+                for B2c, (sB2c,eB2c) in B2citer:
+                    B2c_Count = 0
+                    if stop:break
+                    if B1c_Count > B1c_CountThreshold:
+                        B1citer.next_pos(5)
+                        break
+                    if eB2c - sF2 > g6[1] or eB2c - sF2 < g6[0]: # if there is no room for B2 to satisfy g6.
+                        B1citer.next_pos(1000) # end B1 iteration
+                        break
+                    B3c_start = eB2c + g5[0]
+                    B3c_end = eB2c + g5[1]
+                    BIP = B1c + revcomp(B2c)
+                    maxloopr =  REF.ref[eB1c:eB2c].replace('-','')[0:59]
+                    if not LoopHPfilter(maxloopr):
+                        B1citer.next_pos(AdjustStep) # move B1c forward a step
+                        break # break this B2 if strong loop formed.
+                    if B2cCounter[B2c] >= SAME_Fragment_Threshold: continue
+                    if not hPfilter(BIP): # if BIP have hairpin, move B2 forward.
+                        B2citer.next_pos(AdjustStep)
+                        continue
+                    if not pDimerfilter(BIP,[FIP]):
+                        continue
+
+
+                    B3citer = REF.primer_iter(B3c_start,B3c_end,P3L,PInclu,B3cfilter)
+                    for B3c,(sB3c,eB3c) in B3citer:
+                        B3c_Count = 0
+                        if stop: break
+                        if B2c_Count > B2c_CountThreshold:
+                            B2citer.next_pos(5)
+                            break
+                        if B3cCounter[B3c] >= SAME_Fragment_Threshold:continue
+                        B3 = revcomp(B3c)
+                        if not pDimerfilter(B3,[FIP,BIP]): continue
+                        F3_start = sF2-g1[1]-P3L[1]
+                        F3_end = sF2 - g1[0]- P3L[0]
+
+                        F3iter = REF.primer_iter(F3_start,F3_end,P3L,PInclu,F3filter,step=-1)
+                        for F3,(sF3,eF3) in F3iter:
+                            if stop: break
+                            if B3c_Count >B3c_CountThreshold:
+                                B3citer.next_pos(5)
+                                break
+                            if F3Counter[F3] >= SAME_Fragment_Threshold:continue
+                            if eF3>sF2: continue # in case overlap happened.
+                            if not pDimerfilter(F3,[B3,FIP,BIP]): continue
+
+                            LFfound = False
+                            for LFc, (sLFc,eLFc) in REF.primer_iter(eF2,sF1,LPL,LoopInclu,LFcfilter):
+                                LF = revcomp(LFc)
+                                if not pDimerfilter(LF,[F3,B3,BIP,FIP]): continue
+                                LFfound=True
+                                break
+                            if not LFfound: continue
+
+                            LBfound = False
+                            for LB, (sLB,eLB) in REF.primer_iter(eB1c,sB2c,LPL,LoopInclu,LBfilter):
+                                if not pDimerfilter(LB,[F3,B3,BIP,FIP,LF]): continue
+                                LBfound = True
+                                break
+                            if not LBfound: continue
+
+                            primerset = (F3,F2,F1,B1c,B2c,B3c,LFc,LB)
+                            # save if 3 of the core primers have homology specificity.
+                            if sum([hOmofilterF(i) for i in primerset[0:3]] + [hOmofilterR(i) for i in primerset[3:6]])>=2:
+                                SavePrimerSet(primerset)
+                                primerset_counter += 1
+                                F2_Count+=1
+                                F1_Count+=1
+                                B1c_Count+=1
+                                B2c_Count+=1
+                                B3c_Count+=1
+                                F1Counter[F1] +=1
+                                F3Counter[F3] +=1
+                                B1cCounter[B1c] +=1
+                                B2cCounter[B2c] +=1
+                                B3cCounter[B3c] +=1
+                            # move F2 and everything forward.
+                            if primerset_counter > MAX_primerset:
+                                stop = True
     SavePrimerSet.write()
     progress.end_bar()
     print('Runing Finished.')
+
 
 # main2('ORF1ab',100000)
 #

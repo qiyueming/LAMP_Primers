@@ -301,7 +301,7 @@ class APE:
                     print(f'<{feature["tag"]}> not found')
                     continue
 
-
+REFape = APE('./viral_genome/cov2_ref/HCoV2 NC045512.2.ape')
 
 if __name__ == '__main__':
     print('Starting...')

@@ -1,4 +1,4 @@
-from ape import APE
+from ape import APE,REFape
 from mymodule import Alignment
 import numpy as np
 import pandas as pd
@@ -115,9 +115,6 @@ class AlignmentF(Alignment):
             result = [np.array(i)*seq_c/(seq_c - n*seq_c ) for n,*i in zip(N,A_, G_, C_, T_, gap)]
         return result
 
-file = '/Users/hui/Desktop/WFH papers/COVID-19/Virus Genes/viral_genome/all_align_0512.csv'
-alnfile = '/Users/hui/Desktop/WFH papers/COVID-19/Virus Genes/viral_genome/all_align_0512.aln'
-
 
 class Reference():
     """
@@ -125,7 +122,7 @@ class Reference():
     """
     def __init__(self,csvfile=None,alnfile=None,ref='NC_045512.2'):
         if csvfile:
-            self.df = pd.read_csv(file,index_col=0)
+            self.df = pd.read_csv(csvfile,index_col=0)
             self.ref = ''.join(self.df.nt)
         if alnfile:
             all_align = lines_to_dict(read(alnfile))
@@ -301,6 +298,12 @@ class PrimerIter():
                 if not self.iter_length:
                     self.next_pos()
                 return seq,(i,index)
+
+alnfile = './viral_genome/all_align_0512.aln'
+
+REF = Reference(alnfile=alnfile)
+BAT = Reference(alnfile='./viral_genome/CoV2+Bat.aln')
+REF.label_gene(REFape)
 
 #
 # REF = Reference(alnfile=alnfile)
