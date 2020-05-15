@@ -345,13 +345,20 @@ def main(target=None,step=1,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
                                 stop = True
     SavePrimerSet.write()
 
-def main_limit_count(target=None,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
+def main_limit_count(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
     """
     start with F2 -> F1 -> B1 -> B2 -> B3 -> F3 .
     Strong check Homology to bat CoV at F2, B2 and F3, B3.
     check primer complexity.
     faster adjust on positions.
     """
+    if span:
+        A_start, A_end = span
+        target = target or 'W'
+    else:
+        A_start, A_end = REF.genes[target]
+
+
     pDimerfilter = PrimerDimerfilter(PrimerDimerTm)
     hPfilter = Hairpinfilter(HairpindG)
     LoopHPfilter = Hairpinfilter(LoopHairpindG)
@@ -371,11 +378,6 @@ def main_limit_count(target=None,MAX_primerset=1000,savepath='./LAMP_primer.csv'
     LFcfilter = RCwrapper(LBfilter)
 
 
-    if isinstance(target,str):
-        A_start, A_end = REF.genes[target]
-    else:
-        A_start, A_end = target
-        target = 'W'
 
 
     stop = False
@@ -511,13 +513,19 @@ def main_limit_count(target=None,MAX_primerset=1000,savepath='./LAMP_primer.csv'
     progress.end_bar()
     print('Runing Finished.')
 
-def main_Counter(target=None,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
+def main_Counter(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
     """
     start with F2 -> F1 -> B1 -> B2 -> B3 -> F3 .
     Strong check Homology to bat CoV at F2, B2 and F3, B3.
     check primer complexity.
     faster adjust on positions.
     """
+    if span:
+        A_start, A_end = span
+        target = target or 'W'
+    else:
+        A_start, A_end = REF.genes[target]
+
     pDimerfilter = PrimerDimerfilter(PrimerDimerTm)
     hPfilter = Hairpinfilter(HairpindG)
     LoopHPfilter = Hairpinfilter(LoopHairpindG)
@@ -536,12 +544,6 @@ def main_Counter(target=None,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
     LBfilter = CombFilter(TmFilter(LPTm),GCfilter(GCratio),ESfilter(E3),ESCfilter(N=ESC),Hairpinfilter(HairpindG))
     LFcfilter = RCwrapper(LBfilter)
 
-
-    if isinstance(target,str):
-        A_start, A_end = REF.genes[target]
-    else:
-        A_start, A_end = target
-        target = 'W'
 
     Counters = [Counter() for i in range(5)]
     F1Counter,F3Counter,B1cCounter,B2cCounter,B3cCounter = Counters
