@@ -288,7 +288,7 @@ class PrimerIter():
             index = i+j
             fail = False
             while len(seq) < j:
-                extrant = self.ref[index]
+                extrant = self.REF.ref[index]
                 if self.REF._check_inclusivity(nt,index) < self.inclusivity:
                     fail = True
                     break
