@@ -9,7 +9,7 @@ from primer_para import *
 from datetime import datetime
 from Levenshtein import distance
 # from old_primer import print_ascii_structure
-from mymodule import ft
+from mymodule import ft,ProgressBar
 from ape import read_primerset_excel
 
 
@@ -128,6 +128,7 @@ def Levfilter(threshold = 0.3,k=2,return_value=False):
 
 def HoMofilter(homology=0.8,end=4,direction='F',return_value=False):
     "also check homology at end of the sequence"
+    "This is too stringent."
     def wrap(seq="GCCAAAAGGCTTCTACGCA",):
         if return_value:
             return max(BAT.check_homology(seq,end,direction))
@@ -227,6 +228,8 @@ class PrimerSetHandler:
             f.write('\n')
             f.write('\n'.join(','.join(primerset) for primerset in self.data))
         self.data = []
+
+
 
 def dial_iter(iter,n=10):
     try:
@@ -355,16 +358,14 @@ def main2(target=None,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
     hOmofilterF = HoMofilter(BatHomology,BatHomologyEnd,'F')
     hOmofilterR = HoMofilter(BatHomology,BatHomologyEnd,'R')
 
-    F3filter = CombFilter(TmFilter(P3Tm),GCfilter(GCratio),ESfilter(E3),hOmofilterF,
+    F3filter = CombFilter(TmFilter(P3Tm),GCfilter(GCratio),ESfilter(E3),
                           ESCfilter(N=ESC),Hairpinfilter(HairpindG),PrimerComplexityfilter())
     F2filter = CombFilter(TmFilter(P2Tm),GCfilter(GCratio),ESfilter(E3),
-                          ESCfilter(N=ESC),PrimerComplexityfilter(),hOmofilterF)
+                          ESCfilter(N=ESC),PrimerComplexityfilter())
     F1filter = CombFilter(TmFilter(P1Tm),GCfilter(GCratio),ESfilter(E3),ESCfilter(N=ESC),PrimerComplexityfilter())
     B1cfilter = RCwrapper(F1filter)
-    B2cfilter = CombFilter(RCwrapper(CombFilter(TmFilter(P2Tm),GCfilter(GCratio),ESfilter(E3),
-                          ESCfilter(N=ESC),PrimerComplexityfilter())) , hOmofilterR)
-    B3cfilter = CombFilter(RCwrapper(CombFilter(TmFilter(P3Tm),GCfilter(GCratio),ESfilter(E3),
-                          ESCfilter(N=ESC),Hairpinfilter(HairpindG),PrimerComplexityfilter())),hOmofilterR)
+    B2cfilter = RCwrapper(F2filter)
+    B3cfilter = RCwrapper(F3filter)
 
     LBfilter = CombFilter(TmFilter(LPTm),GCfilter(GCratio),ESfilter(E3),ESCfilter(N=ESC),Hairpinfilter(HairpindG))
     LFcfilter = RCwrapper(LBfilter)
@@ -376,6 +377,7 @@ def main2(target=None,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
         A_start, A_end = target
         target = 'W'
 
+
     stop = False
 
     primerset_counter = 0
@@ -383,7 +385,10 @@ def main2(target=None,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
     SavePrimerSet=PrimerSetHandler(savepath,prefix=target[0])
 
     F2iter = REF.primer_iter(A_start+g1[1]+P3L[1],A_end-g6[1]-g5[1]-P3L[1],P2L,PInclu,F2filter,)
+
+    progress = ProgressBar(limits=(A_start+g1[1]+P3L[1],A_end-g6[1]-g5[1]-P3L[1]))
     for F2, (sF2,eF2) in F2iter:
+        progress(sF2)
         F2_Count = 0
         if stop:break
         F1_start = eF2 + g2[0]
@@ -441,7 +446,6 @@ def main2(target=None,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
                         B3c_Count = 0
                         if stop: break
                         B3 = revcomp(B3c)
-                        if not hPfilter(B3): continue
                         if not pDimerfilter(B3,[FIP,BIP]): continue
                         F3_start = sF2-g1[1]-P3L[1]
                         F3_end = sF2 - g1[0]- P3L[0]
@@ -450,7 +454,6 @@ def main2(target=None,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
                         for F3,(sF3,eF3) in F3iter:
                             if stop: break
                             if eF3>sF2: continue # in case overlap happened.
-                            if not hPfilter(F3): continue
                             if not pDimerfilter(F3,[B3,FIP,BIP]): continue
 
 
@@ -470,13 +473,15 @@ def main2(target=None,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
                             if not LBfound: continue
 
                             primerset = (F3,F2,F1,B1c,B2c,B3c,LFc,LB)
-                            SavePrimerSet(primerset)
-                            primerset_counter += 1
-                            F2_Count+=1
-                            F1_Count+=1
-                            B1c_Count+=1
-                            B2c_Count+=1
-                            B3c_Count+=1
+                            # save if 3 of the core primers have homology specificity.
+                            if sum([hOmofilterF(i) for i in primerset[0:3]] + [hOmofilterR(i) for i in primerset[3:6]])>=3:
+                                SavePrimerSet(primerset)
+                                primerset_counter += 1
+                                F2_Count+=1
+                                F1_Count+=1
+                                B1c_Count+=1
+                                B2c_Count+=1
+                                B3c_Count+=1
                             # move F2 and everything forward.
                             if primerset_counter > MAX_primerset:
                                 stop = True
@@ -504,4 +509,71 @@ def main2(target=None,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
                 break
 
     SavePrimerSet.write()
+    progress.end_bar()
+    print('Runing Finished.')
 
+# main2('ORF1ab',100000)
+#
+# pDimerfilter = PrimerDimerfilter(PrimerDimerTm)
+# hPfilter = Hairpinfilter(HairpindG)
+# LoopHPfilter = Hairpinfilter(LoopHairpindG)
+# hOmofilterF = HoMofilter(BatHomology,BatHomologyEnd,'F')
+# hOmofilterR = HoMofilter(BatHomology,BatHomologyEnd,'R')
+#
+# F3filter = CombFilter(TmFilter(P3Tm),GCfilter(GCratio),ESfilter(E3),hOmofilterF,
+#                       ESCfilter(N=6),Hairpinfilter(HairpindG),PrimerComplexityfilter())
+#
+# F1filter = CombFilter(TmFilter(P1Tm),GCfilter(GCratio),ESfilter(E3),ESCfilter(N=ESC),PrimerComplexityfilter())
+# B1cfilter = RCwrapper(F1filter)
+# B2cfilter = CombFilter(RCwrapper(CombFilter(TmFilter(P2Tm),GCfilter(GCratio),ESfilter(E3),
+#                       ESCfilter(N=ESC),PrimerComplexityfilter())) , hOmofilterR)
+# B3cfilter = CombFilter(RCwrapper(CombFilter(TmFilter(P3Tm),GCfilter(GCratio),ESfilter(E3),
+#                       ESCfilter(N=ESC),Hairpinfilter(HairpindG),PrimerComplexityfilter())),hOmofilterR)
+#
+# LBfilter = CombFilter(TmFilter(LPTm),GCfilter(GCratio),ESfilter(E3),ESCfilter(N=ESC),Hairpinfilter(HairpindG))
+# LFcfilter = RCwrapper(LBfilter)
+#
+# A_end
+#
+#
+#
+#
+# P2Tm
+#
+# hOmofilterF = HoMofilter(BatHomology,BatHomologyEnd,'F')
+#
+#
+#
+# A_start, A_end = REF.genes['N']
+# F2filter = CombFilter(TmFilter((61.5,63.5)),GCfilter((0.4,0.65)),ESfilter(E3),
+#                       ESCfilter(N=4),PrimerComplexityfilter() ,HoMofilter(0.9,40,'F')) #PrimerComplexityfilter()
+# F2iter = REF.primer_iter(A_start,A_end,(19,23),PInclu,F2filter,)
+#
+# res = []
+# for i in F2iter:
+#     res.append(i)
+# print(len(res))
+# res
+#
+#
+# rhOmofilterF = HoMofilter(BatHomology,BatHomologyEnd,'F',return_value=True)
+#
+# rhOmofilterF('AGGTGATTGTGAAGAAGAAGAG')
+#
+# BAT.check_homology('TCAACCTGAAGAAGAGCAAGAA',100,'F')
+#
+# BAT.check_homology('TCAACCTGAAGAAGAGCAAGAA',6,'F')
+#
+
+
+# with homology filter 83
+# with Tm, GC, ES, ESC, complexity filter 1325
+# with Tm, GC, ES, ESC, filter 1394
+# with Tm, GC, ES, ESC, Homology filter 85 19-21
+# with Tm, GC, ES, ESC, homology filter 19 - 23 length 137
+# with Tm, GC, ES, ESC, CPX 19-23L 2747
+# with Tm, GC, ES, ESC=6, CPX 19-23L 2846
+# with Tm=2, GC, ES, ESC=6, CPX, 19-23L 4750
+# with Tm=2, GC, ES, ESC=6, CPX, 19-23L,HOMO3 249
+# with Tm=2, GC, ES, ESC=6, CPX, 19-23L, HOMO4, 304
+# with Tm=2, GC, ES, ESC=6, CPX, 19-23L, HOMO40,0.8, 465

@@ -271,8 +271,8 @@ class PrimerIter():
             return nt,self.posi,self.lengthi - 1
         raise StopIteration
 
-    def next_pos(self,forward=1):
-        self.posi += forward
+    def next_pos(self,forward=None):
+        self.posi += forward or self.step
         self.lengthi = self.lengthlow
 
     def __iter__(self):
