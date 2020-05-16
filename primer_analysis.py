@@ -49,7 +49,7 @@ def iter_primerset_html(files):
 files = glob.glob('./LAMP_primer_design_output/*.*')
 
 
-def read_lamp_design_output(files,skiprows=35,usecols=[1,2],return_df=False):
+def iter_primerset_lamp_design(files,skiprows=35,usecols=[1,2],skipfooter=0,return_df=False):
     """
     read all csv files convert to a single DataFrame
     then iterate over primer sets,give it a name based on locus
@@ -59,22 +59,20 @@ def read_lamp_design_output(files,skiprows=35,usecols=[1,2],return_df=False):
     df = pd.DataFrame(columns=['name','seq'])
     dfs = [df]
     for f in files:
-        _df = pd.read_csv(f,skiprows=list(range(skiprows)),usecols=usecols)
+        _df = pd.read_csv(f,skiprows=list(range(skiprows)),usecols=usecols,skipfooter=skipfooter)
         dfs.append(_df)
     df = pd.concat(dfs,axis=0,ignore_index=True)
-    if return_df: return df
-    name_counter = Counter()
-    for i in range((len(df)//8)):
-        F3, F2, F1, B1c, B2c, B3c, LFc, LB = list(df.loc[i*8:(i*8+7),'seq'])
-        gene = REFape.name_primer(F1)
-        name_counter[gene[0]] += 1
-        setname = gene[0] + str(name_counter[gene[0]])
-        yield PrimerSetRecord([setname,F3,revcomp(B3c),revcomp(F1)+F2,
-              B1c+revcomp(B2c),revcomp(LFc),LB,B2c,B1c,F2,F1,gene,B3c,LFc])
-
-
-df = read_lamp_design_output(files)
-
+    if return_df:
+        yield df
+    else:
+        name_counter = Counter()
+        for i in range((len(df)//8)):
+            F3, F2, F1, B1c, B2c, B3c, LFc, LB = list(df.loc[i*8:(i*8+7),'seq'])
+            gene = REFape.name_primer(F1)
+            name_counter[gene[0]] += 1
+            setname = gene[0] + str(name_counter[gene[0]])
+            yield PrimerSetRecord([setname,F3,revcomp(B3c),revcomp(F1)+F2,
+                  B1c+revcomp(B2c),revcomp(LFc),LB,B2c,B1c,F2,F1,gene,B3c,LFc])
 
 
 
@@ -242,45 +240,3 @@ p.ExtensionStartGCratio()
 
 for k,i in p.items():
     print(k,'=',i)
-
-
-
-
-p.ExtensionStartGCratio()
-p
-
-d=pd.DataFrame(p,index=list(p.keys()))
-
-d
-
-res = []
-for pr in read_lamp_design_output(files):
-    res.append(
-    pr.Inclusivity()
-      .Amplicon_pos()
-      .Gaps()
-      .GC_ratio()
-      .length()
-      .Tm()
-      .Hairpin()
-      .PrimerDimer()
-      )
-
-newdf = pd.DataFrame(res)
-
-
-res = []
-for pr in iter_primerset_excel():
-    res.append(
-    pr.Inclusivity()
-      .Amplicon_pos()
-      .Gaps()
-      .GC_ratio()
-      .length()
-      .Tm()
-      .Hairpin()
-      .PrimerDimer()
-      )
-
-currentdf = pd.DataFrame(res)
-currentdf.to_clipboard()

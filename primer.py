@@ -561,8 +561,8 @@ def main_Counter(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_prime
 
     SavePrimerSet=PrimerSetHandler(savepath,prefix=target[0],batchcount=10)
 
-
-    progress = ProgressBar(limits=(A_start+g1[1]+P3L[1],A_end-g6[1]-g5[1]-P3L[1]))
+    print(f'Started {target} P({A_start}-{A_end})...\n')
+    progress = ProgressBar(limits=(A_start+g1[1]+P3L[1],A_end-g6[1]-g5[1]-P3L[1]),prefix=f'P({A_start}-{A_end})')
 
     F2iter = REF.primer_iter(A_start+g1[1]+P3L[1],A_end-g6[1]-g5[1]-P3L[1],P2L,PInclu,F2filter,)
     for F2, (sF2,eF2) in F2iter:
@@ -696,7 +696,8 @@ def main_Counter(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_prime
     SavePrimerSet.write()
     SavePrimerSet.done()
     progress.end_bar()
-    print(f'Runing {target} - {span} Finished.')
+    print(f'Runing {target} ({A_start}-{A_end}) Finished.\n')
+    return 0
 
 
 main_Counter('N',span=(10000,11000))
