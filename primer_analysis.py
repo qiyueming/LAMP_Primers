@@ -47,7 +47,7 @@ def iter_primerset_html(files):
 files = glob.glob('./LAMP_primer_design_output/*.csv')
 
 
-def iter_primerset_lamp_design(files,skiprows=0,usecols=[1,2],skipfooter=0,return_df=False):
+def iter_primerset_lamp_design(files,skiprows=36,usecols=[1,2],skipfooter=0,return_df=False):
     """
     read all csv files convert to a single DataFrame
     then iterate over primer sets,give it a name based on locus
