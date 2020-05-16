@@ -677,7 +677,7 @@ def main_Counter(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_prime
 
                             primerset = (F3,F2,F1,B1c,B2c,B3c,LFc,LB)
                             # save if 3 of the core primers have homology specificity.
-                            if sum([hOmofilterF(i) for i in primerset[0:3]] + [hOmofilterR(i) for i in primerset[3:6]])>=2:
+                            if sum([hOmofilterF(i) for i in primerset[0:3]] + [hOmofilterR(i) for i in primerset[3:6]])>=BatHomologyCount:
                                 SavePrimerSet(primerset)
                                 primerset_counter += 1
                                 F2_Count+=1
