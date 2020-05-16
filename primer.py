@@ -698,6 +698,3 @@ def main_Counter(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_prime
     progress.end_bar()
     print(f'Runing {target} ({A_start}-{A_end}) Finished.\n')
     return 0
-
-
-main_Counter('N',span=(10000,11000))
