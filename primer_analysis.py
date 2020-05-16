@@ -41,6 +41,8 @@ def iter_primerset_excel():
                   B1c+B2,LF,LB,revcomp(B2),B1c,F2,revcomp(F1c),gene,revcomp(B3),revcomp(LF)])
 
 
+def iter_primerset_html(files):
+    "iterate over primerdesign result from website."
 
 
 

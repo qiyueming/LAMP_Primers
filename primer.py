@@ -180,6 +180,30 @@ def PrimerComplexityfilter(trimer=2,tetramer=1,pentamer=0):
         return True
     return wrap
 
+class HomologyCounter(dict):
+    """
+    To keep track of how many remaning homology fragment needed.
+    """
+    def __init__(self,order):
+        self.order = order
+        super()
+    def __call__(self, sequence,name):
+        h = BAT.check_homology(sequence)
+        self[name] = max(h) <= BatHomology
+        for n in self.order[ self.order.index(name) + 1:]:
+            self[n] = 0
+        return self
+
+    def check_homology(self,x):
+        return  max(BAT.check_homology( REF.ref[x:x+25].replace('-','') ))
+
+    def check_possibility(self,starts,ends):
+        if sum(self.values()) >= BatHomologyCount: return True
+        if isinstance(starts,int):
+            starts = [starts]
+            ends = [ends]
+        return any(self.check_homology(i)<= BatHomology  for start,end in zip(starts,ends) for i in range(start,end,2))
+
 # method to save primer set.
 class PrimerSetHandler:
     def __init__(self,path,prefix,batchcount=100):
@@ -526,6 +550,7 @@ def main_Counter(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_prime
     LBfilter = CombFilter(TmFilter(LPTm),GCfilter(GCratio),ESfilter(E3),ESCfilter(N=ESC),Hairpinfilter(HairpindG))
     LFcfilter = RCwrapper(LBfilter)
 
+    homologyCounter = HomologyCounter(order=('F2','F3','F1','B1c','B2c','B3c'))
 
     Counters = [Counter() for i in range(5)]
     F1Counter,F3Counter,B1cCounter,B2cCounter,B3cCounter = Counters
@@ -536,21 +561,25 @@ def main_Counter(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_prime
 
     SavePrimerSet=PrimerSetHandler(savepath,prefix=target[0],batchcount=10)
 
-    F2iter = REF.primer_iter(A_start+g1[1]+P3L[1],A_end-g6[1]-g5[1]-P3L[1],P2L,PInclu,F2filter,)
 
     progress = ProgressBar(limits=(A_start+g1[1]+P3L[1],A_end-g6[1]-g5[1]-P3L[1]))
+
+    F2iter = REF.primer_iter(A_start+g1[1]+P3L[1],A_end-g6[1]-g5[1]-P3L[1],P2L,PInclu,F2filter,)
     for F2, (sF2,eF2) in F2iter:
         progress(sF2)
         F2_Count = 0
         if stop:break
+        if not homologyCounter(F2,'F2').check_possibility(sF2-g1[1]-P3L[1],sF2+g6[1]+g5[1]+P3L[1]): break
         F1_start = eF2 + g2[0]
         F1_end = eF2 + g2[1]
         if not pDimerfilter(F2,[]): continue
 
         F1iter = REF.primer_iter(F1_start,F1_end,P1L,PInclu,F1filter)
+
         for F1, (sF1,eF1) in F1iter:
             F1_Count = 0
             if stop:break
+            if not homologyCounter(F1,'F1').check_possibility((sF2-g1[1]-P3L[1],eF1), (sF2, eF1+g3[1]+P1L[1]+g4[1]+P2L[1]+g5[1]+P3L[1])): break
             if F2_Count > F2_CountThreshold: # if toomany with samfe F2, break out of F1 loop.
                 F2iter.next_pos(10) # if found many in this position, move F2 forward 10 n.t.
                 break
@@ -573,6 +602,7 @@ def main_Counter(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_prime
             for B1c, (sB1c,eB1c) in B1citer:
                 B1c_Count = 0
                 if stop:break
+                if not homologyCounter(B1c,'B1c').check_possibility((sF2-g1[1]-P3L[1],eB1c), (sF2, eB1c+g4[1]+P2L[1]+g5[1]+P3L[1])): break
                 if F1_Count > F1_CountThreshold:
                     F1iter.next_pos(5)
                     break
@@ -584,6 +614,7 @@ def main_Counter(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_prime
                 for B2c, (sB2c,eB2c) in B2citer:
                     B2c_Count = 0
                     if stop:break
+                    if not homologyCounter(B2c,'B2c').check_possibility((sF2-g1[1]-P3L[1],eB2c), (sF2, eB2c+g5[1]+P3L[1])): break
                     if B1c_Count > B1c_CountThreshold:
                         B1citer.next_pos(5)
                         break
@@ -609,6 +640,7 @@ def main_Counter(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_prime
                     for B3c,(sB3c,eB3c) in B3citer:
                         B3c_Count = 0
                         if stop: break
+                        if not homologyCounter(B3c,'B3c').check_possibility(sF2-g1[1]-P3L[1],sF2): break
                         if B2c_Count > B2c_CountThreshold:
                             B2citer.next_pos(5)
                             break
@@ -667,68 +699,4 @@ def main_Counter(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_prime
     print(f'Runing {target} - {span} Finished.')
 
 
-# main2('ORF1ab',100000)
-#
-# pDimerfilter = PrimerDimerfilter(PrimerDimerTm)
-# hPfilter = Hairpinfilter(HairpindG)
-# LoopHPfilter = Hairpinfilter(LoopHairpindG)
-# hOmofilterF = HoMofilter(BatHomology,BatHomologyEnd,'F')
-# hOmofilterR = HoMofilter(BatHomology,BatHomologyEnd,'R')
-#
-# F3filter = CombFilter(TmFilter(P3Tm),GCfilter(GCratio),ESfilter(E3),hOmofilterF,
-#                       ESCfilter(N=6),Hairpinfilter(HairpindG),PrimerComplexityfilter())
-#
-# F1filter = CombFilter(TmFilter(P1Tm),GCfilter(GCratio),ESfilter(E3),ESCfilter(N=ESC),PrimerComplexityfilter())
-# B1cfilter = RCwrapper(F1filter)
-# B2cfilter = CombFilter(RCwrapper(CombFilter(TmFilter(P2Tm),GCfilter(GCratio),ESfilter(E3),
-#                       ESCfilter(N=ESC),PrimerComplexityfilter())) , hOmofilterR)
-# B3cfilter = CombFilter(RCwrapper(CombFilter(TmFilter(P3Tm),GCfilter(GCratio),ESfilter(E3),
-#                       ESCfilter(N=ESC),Hairpinfilter(HairpindG),PrimerComplexityfilter())),hOmofilterR)
-#
-# LBfilter = CombFilter(TmFilter(LPTm),GCfilter(GCratio),ESfilter(E3),ESCfilter(N=ESC),Hairpinfilter(HairpindG))
-# LFcfilter = RCwrapper(LBfilter)
-#
-# A_end
-#
-#
-#
-#
-# P2Tm
-#
-# hOmofilterF = HoMofilter(BatHomology,BatHomologyEnd,'F')
-#
-#
-#
-# A_start, A_end = REF.genes['N']
-# F2filter = CombFilter(TmFilter((61.5,63.5)),GCfilter((0.4,0.65)),ESfilter(E3),
-#                       ESCfilter(N=4),PrimerComplexityfilter() ,HoMofilter(0.9,40,'F')) #PrimerComplexityfilter()
-# F2iter = REF.primer_iter(A_start,A_end,(19,23),PInclu,F2filter,)
-#
-# res = []
-# for i in F2iter:
-#     res.append(i)
-# print(len(res))
-# res
-#
-#
-# rhOmofilterF = HoMofilter(BatHomology,BatHomologyEnd,'F',return_value=True)
-#
-# rhOmofilterF('AGGTGATTGTGAAGAAGAAGAG')
-#
-# BAT.check_homology('TCAACCTGAAGAAGAGCAAGAA',100,'F')
-#
-# BAT.check_homology('TCAACCTGAAGAAGAGCAAGAA',6,'F')
-#
-
-
-# with homology filter 83
-# with Tm, GC, ES, ESC, complexity filter 1325
-# with Tm, GC, ES, ESC, filter 1394
-# with Tm, GC, ES, ESC, Homology filter 85 19-21
-# with Tm, GC, ES, ESC, homology filter 19 - 23 length 137
-# with Tm, GC, ES, ESC, CPX 19-23L 2747
-# with Tm, GC, ES, ESC=6, CPX 19-23L 2846
-# with Tm=2, GC, ES, ESC=6, CPX, 19-23L 4750
-# with Tm=2, GC, ES, ESC=6, CPX, 19-23L,HOMO3 249
-# with Tm=2, GC, ES, ESC=6, CPX, 19-23L, HOMO4, 304
-# with Tm=2, GC, ES, ESC=6, CPX, 19-23L, HOMO40,0.8, 465
+main_Counter('N',span=(10000,11000))
