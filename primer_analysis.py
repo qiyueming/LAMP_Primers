@@ -16,9 +16,7 @@ dntp_conc=1.4
 
 
 ps = read_primerset_excel()
-ps[0]
 
-all([1,None])
 
 def iter_primerset_excel():
     "yield:PrimerSetRecord([setname,F3,B3,FIP,BIP,LF,LB,B2c,B1c,F2,F1,gene,B3c,LFc,])"
@@ -46,10 +44,10 @@ def iter_primerset_html(files):
 
 
 
-files = glob.glob('./LAMP_primer_design_output/*.*')
+files = glob.glob('./LAMP_primer_design_output/*.csv')
 
 
-def iter_primerset_lamp_design(files,skiprows=35,usecols=[1,2],skipfooter=0,return_df=False):
+def iter_primerset_lamp_design(files,skiprows=0,usecols=[1,2],skipfooter=0,return_df=False):
     """
     read all csv files convert to a single DataFrame
     then iterate over primer sets,give it a name based on locus
