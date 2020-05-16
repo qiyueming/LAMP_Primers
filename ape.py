@@ -103,6 +103,14 @@ class APE:
         with open(path,'wt') as f:
             f.write(self.dumps())
 
+    def name_primer(self,seq):
+        _,end=self.locate_primer(seq)
+        for d in self.features:
+            if end> d['start'] and end< d['end']:
+                return d['tag']
+        return 'Unknown'
+
+
     def dumps(self):
         s = ['LOCUS','FEATURES             Location/Qualifiers']
         for f in self.features:

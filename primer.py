@@ -37,23 +37,6 @@ def draw_hairpin(seq):
     print(r.ascii_structure)
 
 
-# draw_hairpin('TAATGGACCCCAAAATCAGCG')
-
-
-# r=primer3.bindings.calcHeterodimer(('CAGTCAAGCCTCTTCTCGTT'),REFape.sequence[0:9999], mv_conc,dv_conc,dntp_conc,output_structure=True )
-
-
-# print_ascii_structure(r)
-
-
-
-
-
-# file = '/Users/hui/Desktop/WFH papers/COVID-19/Virus Genes/viral_genome/all_align_0512.csv'
-
-
-
-
 
 def GC_ratio(seq):
     return (seq.count('G')+seq.count('C'))/len(seq)
@@ -230,14 +213,10 @@ class PrimerSetHandler:
             f.write('\n'.join(','.join(primerset) for primerset in self.data))
         self.data = []
 
-
-
-def dial_iter(iter,n=10):
-    try:
-        for i in range(n):
-            next(iter)
-    except:
-        pass
+    def done(self):
+        'write a line to indicate its done.'
+        with open(self.path,'at') as f:
+            f.write(f"\n====> END On {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} <====")
 
 def main(target=None,step=1,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
     """
@@ -345,6 +324,7 @@ def main(target=None,step=1,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
                             if primerset_counter > MAX_primerset:
                                 stop = True
     SavePrimerSet.write()
+    SavePrimerSet.done()
 
 def main_limit_count(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
     """
@@ -511,6 +491,7 @@ def main_limit_count(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_p
                             if primerset_counter > MAX_primerset:
                                 stop = True
     SavePrimerSet.write()
+    SavePrimerSet.done()
     progress.end_bar()
     print('Runing Finished.')
 
@@ -681,6 +662,7 @@ def main_Counter(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_prime
                             if primerset_counter > MAX_primerset:
                                 stop = True
     SavePrimerSet.write()
+    SavePrimerSet.done()
     progress.end_bar()
     print('Runing Finished.')
 
