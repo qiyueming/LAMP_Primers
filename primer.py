@@ -493,7 +493,7 @@ def main_limit_count(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_p
     SavePrimerSet.write()
     SavePrimerSet.done()
     progress.end_bar()
-    print('Runing Finished.')
+    print(f'Runing {targt} - {span} Finished.')
 
 def main_Counter(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
     """
@@ -664,7 +664,7 @@ def main_Counter(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_prime
     SavePrimerSet.write()
     SavePrimerSet.done()
     progress.end_bar()
-    print('Runing Finished.')
+    print(f'Runing {targt} - {span} Finished.')
 
 
 # main2('ORF1ab',100000)
