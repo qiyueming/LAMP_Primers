@@ -332,7 +332,7 @@ class PrimerSetRecordList(list):
     "a list collections of PrimerSetRecord, can be initiated from path to csv."
     def __init__(self,inputs,*args,**kwargs):
         if isinstance(inputs,str):
-            df = pd.read_csv(inputs,*args,**kwargs)
+            df = pd.read_csv(inputs,*args,keep_default_na=False,**kwargs)
             super().__init__(df.to_dict(orient="records",into=PrimerSetRecord))
         else:
             super().__init__(inputs)
