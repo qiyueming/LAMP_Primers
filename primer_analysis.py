@@ -12,6 +12,7 @@ from collections import Counter,OrderedDict
 from primer_para import mv_conc,dv_conc,dntp_conc
 from resources import CROSS_GENE_FILE,CROSS_GENE_NAME
 from crossreactivity import print_ascii_structure
+from Levenshtein import distance
 
 CROSS_GENE_SEQUENCE = [ APE(i).sequence for i in CROSS_GENE_FILE]
 CROSS_GENE_SEQUENCE[0][-20:]
@@ -25,12 +26,12 @@ def homology_hamming(s,ref,):
     sr=revcomp(s)
     if (s in ref) or (sr in ref):
         return 1
-    distance = 0
+    d = 0
     sl = len(s)
     rl = len(ref)
     for i in range(rl-sl+1):
-        distance = max(hammingR(s,ref[i:i+sl]),hammingR(sr,ref[i:i+sl]),distance)
-    return distance/sl
+        d = max(hammingR(s,ref[i:i+sl]),hammingR(sr,ref[i:i+sl]),d)
+    return d/sl
 
 
 def LongHeteroDimerTm(primer,sequence):
@@ -309,4 +310,5 @@ class PrimerSetRecordList(list):
         self.table.to_csv(path,index=index,**kwargs)
 
 
-pl = PrimerSetRecordList('./lamp_primers.csv')
+pl = PrimerSetRecordList('./LAMP_primer_design_output/my_lamp_primers.csv')
+len(pl)
