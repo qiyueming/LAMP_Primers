@@ -173,6 +173,23 @@ class PrimerSetRecord(OrderedDict):
     def calc_GC_ratio(self,seq):
         return round((seq.count('G')+seq.count('C'))/len(seq),4) if seq else 0
 
+    @LazyProperty
+    def gap_positions(self):
+        "return a list of all 12 gap positions, 0 indexed."
+        return [j for i in ['F3','F2','F1','B1c','B2c','B3c'] for j in REFape.locate_primer(self[i])]
+
+    def serialize(self):
+
+        return tuple(self.items())
+
+    @classmethod
+    def hyrolize(cls,data):
+        return cls(data)
+
+    # analysis methods start
+    # Order:
+
+
     def GC_ratio(self,):
         for p,seq in self.iter('primer'):
             self[p+'-GC%']=self.calc_GC_ratio(seq)
@@ -188,7 +205,7 @@ class PrimerSetRecord(OrderedDict):
         self['A_end']=e
         return self
 
-    def length(self,):
+    def Length(self,):
         for p,seq in self.iter('primer'):
             r = len(seq)
             self[p+'-Length']=r
@@ -220,10 +237,6 @@ class PrimerSetRecord(OrderedDict):
         self['Inclusivity']=round(r,5)
         return self
 
-    @LazyProperty
-    def gap_positions(self):
-        "return a list of all 12 gap positions, 0 indexed."
-        return [j for i in ['F3','F2','F1','B1c','B2c','B3c'] for j in REFape.locate_primer(self[i])]
 
     def Gaps(self):
         "Gap distances between fragments and amplicon length."
@@ -310,5 +323,6 @@ class PrimerSetRecordList(list):
         self.table.to_csv(path,index=index,**kwargs)
 
 
-pl = PrimerSetRecordList('./LAMP_primer_design_output/my_lamp_primers.csv')
-len(pl)
+
+if __name__ == '__main__':
+    pl = PrimerSetRecordList('./LAMP_primer_design_output/my_lamp_primers.csv')
