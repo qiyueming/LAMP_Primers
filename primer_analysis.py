@@ -1,21 +1,64 @@
 """
 generate analysis from primer design csv file.
 """
-from ape import REFape,read_primerset_excel
-from align_sequence import REF,BAT
+import glob
+from ape import REFape,read_primerset_excel,APE
+from align_sequence import REF #,BAT
 import pandas as pd
 from mymodule import revcomp,LazyProperty
-import glob
 import primer3
 from itertools import product
 from collections import Counter,OrderedDict
-# from primer_para import *
-mv_conc=50
-dv_conc=8
-dntp_conc=1.4
+from primer_para import mv_conc,dv_conc,dntp_conc
+from resources import CROSS_GENE_FILE,CROSS_GENE_NAME
+from crossreactivity import print_ascii_structure
+
+CROSS_GENE_SEQUENCE = [ APE(i).sequence for i in CROSS_GENE_FILE]
+CROSS_GENE_SEQUENCE[0][-20:]
 
 
-ps = read_primerset_excel()
+def hammingR(s1,s2,):
+    return sum(i==j for i,j in zip(s1,s2))
+
+
+def homology_hamming(s,ref,):
+    sr=revcomp(s)
+    if (s in ref) or (sr in ref):
+        return 1
+    distance = 0
+    sl = len(s)
+    rl = len(ref)
+    for i in range(rl-sl+1):
+        distance = max(hammingR(s,ref[i:i+sl]),hammingR(sr,ref[i:i+sl]),distance)
+    return distance/sl
+
+
+def LongHeteroDimerTm(primer,sequence):
+    length = int(len(sequence)/9000+1)
+    maxtm=-100
+    for i in range(length):
+        totest = sequence[i*9000:(i+1)*9000+100]
+        r = primer3.bindings.calcHeterodimer(primer,totest,mv_conc,dv_conc,dntp_conc,)
+        tm = r.tm
+        if tm>maxtm:
+            maxtm = tm
+    return maxtm
+
+
+def HeteroDimerAnneal(primer,sequence):
+    "mv_conc,dv_conc,"
+    length = int(len(sequence)/9000+1)
+    maxtm=-100
+    align = None
+    for i in range(length):
+        totest = sequence[i*9000:(i+1)*9000+100]
+        r = primer3.bindings.calcHeterodimer(primer,totest,mv_conc,dv_conc,dntp_conc,output_structure=True)
+        tm = r.tm
+        if tm>maxtm:
+            maxtm = tm
+            align = print_ascii_structure(r,printresult=False)
+
+    return maxtm,align
 
 
 def iter_primerset_excel():
@@ -44,10 +87,8 @@ def iter_primerset_html(files):
 
 
 
-files = glob.glob('./LAMP_primer_design_output/*.csv')
 
-
-def iter_primerset_lamp_design(files,skiprows=36,usecols=[1,2],skipfooter=0,return_df=False):
+def iter_primerset_lamp_design_csv(files,skiprows=36,usecols=[1,2],skipfooter=0,return_df=False):
     """
     read all csv files convert to a single DataFrame
     then iterate over primer sets,give it a name based on locus
@@ -84,8 +125,11 @@ class PrimerSetRecord(OrderedDict):
     fragment_order = ('F3','F2','F1','B3c','B2c','B1c','LFc','LB',)
     primer_order = ('F3','B3','FIP','BIP','LF','LB',)
     def __init__(self,inputs):
-        super().__init__(zip(
-        ['name','F3','B3','FIP','BIP','LF','LB','B2c','B1c','F2','F1','gene','B3c','LFc'],inputs))
+        if isinstance(inputs,list):
+            super().__init__(zip(
+            ['name','F3','B3','FIP','BIP','LF','LB','B2c','B1c','F2','F1','gene','B3c','LFc'],inputs))
+        else:
+            super().__init__(inputs)
 
     @property
     def dg(self):
@@ -97,8 +141,18 @@ class PrimerSetRecord(OrderedDict):
     def __str__(self):
         return f"PrimerSetRecord {self['name']} in {self['gene']}"
 
+    def __eq__(self,b):
+        return all(i==j for i,j in zip(self.iter('fragment'),b.iter('fragment')))
+
+
     def __repr__(self):
-        return self.table.to_markdown()
+        return f"PrimerSetRecord {self['name']} in {self['gene']}"
+
+    def delete(self,*key):
+        "same as pop but return itself"
+        for i in key:
+            self.pop(i)
+        return self
 
     @property
     def table(self):
@@ -174,7 +228,7 @@ class PrimerSetRecord(OrderedDict):
         "Gap distances between fragments and amplicon length."
         ps = self.gap_positions
         r = [ i-j for i,j in zip(ps[2::2] , ps[1::2])]
-        self.update(zip(('G1','G2','G3','G4','G5'), r ))
+        self.update(zip(('Gap1','Gap2','Gap3','Gap4','Gap5'), r ))
         return self
 
     def LoopHairpin(self):
@@ -193,9 +247,15 @@ class PrimerSetRecord(OrderedDict):
         self['RloopTm'] = round(lrr.tm,3)
         return self
 
-
     def NonTarget(self):
-        "Check non target dg"
+        "Check non target and Tm"
+        if ('A_start' not in self) or ('A_end' not in self):
+            self.Amplicon_pos()
+        s,e = self['A_start'],self['A_end']
+        nt = REFape.sequence[0:s] +  REFape.sequence[e:]
+        for p,s in self.iter('primer'):
+            tm = LongHeteroDimerTm(s,nt)
+            self[f'{p}-OTTm'] = round(tm,2)
         return self
 
     def ExtensionStartGCratio(self,forward=8):
@@ -212,29 +272,41 @@ class PrimerSetRecord(OrderedDict):
         ))
         return self
 
-
-
     def CrossReactivity(self):
-        "check cross reactivity with other viruses; need to implement BLAST myself"
+        "check cross reactivity with other viruses; using hamming distance"
+        columnname = [f"{i}-CR" for i in CROSS_GENE_NAME]
+        self.update(zip( columnname,
+                   (sum( homology_hamming(j,i) for _,j in self.iter('fragment') )/8
+                    for i in CROSS_GENE_SEQUENCE)))
         return self
 
-p = list(iter_primerset_excel())[1]
-p
-d=pd.DataFrame.from_dict(p,orient='index',columns=['Value'],)
+class PrimerSetRecordList(list):
+    "a list collections of PrimerSetRecord, can be initiated from path to csv."
+    def __init__(self,inputs,*args,**kwargs):
+        if isinstance(inputs,str):
+            df = pd.read_csv(inputs,*args,**kwargs)
+            super().__init__(df.to_dict(orient="records",into=PrimerSetRecord))
+        else:
+            super().__init__(inputs)
 
-d.index.name='new'
-a = str(p)
-a
-p.ExtensionStartGCratio()
+    def __getitem__(self,slice):
+        if isinstance(slice,int):
+            return super().__getitem__(slice)
+        else:
+            return PrimerSetRecordList(super().__getitem__(slice))
 
-(p.Inclusivity()
-  .Amplicon_pos()
-  .Gaps()
-  .GC_ratio()
-  .length()
-  .Tm()
-  .Hairpin()
-  .PrimerDimer())
+    def __getattr__(self,attr):
+        def wrap(*args,**kwargs):
+            [getattr(i,attr)(*args,**kwargs) for i in self]
+            return self
+        return wrap
 
-for k,i in p.items():
-    print(k,'=',i)
+    @property
+    def table(self):
+        return pd.DataFrame(self)
+
+    def save_csv(self,path,index=False,**kwargs):
+        self.table.to_csv(path,index=index,**kwargs)
+
+
+pl = PrimerSetRecordList('./lamp_primers.csv')

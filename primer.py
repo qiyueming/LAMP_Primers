@@ -698,3 +698,11 @@ def main_Counter(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_prime
     progress.end_bar()
     print(f'Runing {target} ({A_start}-{A_end}) Finished.\n')
     return 0
+
+
+if __name__=='__main__':
+    F3filter = CombFilter(TmFilter(P3Tm),GCfilter(GCratio),ESfilter(E3),ESCfilter(N=ESC),Hairpinfilter(HairpindG),PrimerComplexityfilter())
+    B3citer = REF.primer_iter(3000,3500,P3L,PInclu,F3filter)
+    r= list(B3citer)
+
+    len(r)
