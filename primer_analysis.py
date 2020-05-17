@@ -13,6 +13,7 @@ from primer_para import mv_conc,dv_conc,dntp_conc
 from resources import CROSS_GENE_FILE,CROSS_GENE_NAME
 from crossreactivity import print_ascii_structure
 from Levenshtein import distance
+import re
 
 CROSS_GENE_SEQUENCE = [ APE(i).sequence for i in CROSS_GENE_FILE]
 CROSS_GENE_SEQUENCE[0][-20:]
@@ -39,7 +40,7 @@ def LongHeteroDimerTm(primer,sequence):
     maxtm=-100
     for i in range(length):
         totest = sequence[i*9000:(i+1)*9000+100]
-        r = primer3.bindings.calcHeterodimer(primer,totest,mv_conc,dv_conc,dntp_conc,)
+        r = primer3.bindings.calcHeterodimer(primer[0:60],totest,mv_conc,dv_conc,dntp_conc,)
         tm = r.tm
         if tm>maxtm:
             maxtm = tm
@@ -53,7 +54,7 @@ def HeteroDimerAnneal(primer,sequence):
     align = None
     for i in range(length):
         totest = sequence[i*9000:(i+1)*9000+100]
-        r = primer3.bindings.calcHeterodimer(primer,totest,mv_conc,dv_conc,dntp_conc,output_structure=True)
+        r = primer3.bindings.calcHeterodimer(primer[0:60],totest,mv_conc,dv_conc,dntp_conc,output_structure=True)
         tm = r.tm
         if tm>maxtm:
             maxtm = tm
@@ -84,7 +85,40 @@ def iter_primerset_excel():
 
 
 def iter_primerset_html(files):
-    "iterate over primerdesign result from website."
+    """
+    iterate over primerdesign result from website.
+    yield: PrimerSetRecord()
+    [setname,F3,B3,FIP,BIP,LF,LB,B2c,B1c,F2,F1,gene,B3c,LFc,]
+    """
+    p1 = re.compile("""<td><span class="dnaString">\[(?P<id>\d*)\]</span></td>(?P<content>.*)<td><span class="dnaString">\[(?P=id)\]</span></td>""",flags=re.DOTALL)
+    p2 = re.compile('<span class="dnaString" style="color:#(?P<color>.{6});">(?P<seq>[ATCGatcg]*)</span>')
+    name_counter = Counter()
+    for file in files:
+        with open(file,'rt') as fr:
+            text = fr.read()
+        for s in p1.finditer(text):
+            content = s['content']
+            out = []
+            color = ""
+            case = None
+            for d in p2.finditer(content):
+                seq = d['seq']
+                if d['color'] != color or case !=seq.isupper():
+                    color = d['color']
+                    case = seq.isupper()
+                    out.append("")
+                out[-1]+=seq
+            F3,F2,F1c,B1c,B2,B3=[i.upper() for i in out]
+            F1c,B2,B3 = F1c[::-1],B2[::-1],B3[::-1]
+            B2c = revcomp(B2)
+            B3c = revcomp(B3)
+            F1 = revcomp(F1c)
+            FIP = F1c+F2
+            BIP = B1c + B2
+            gene = REFape.name_primer(F1)
+            name_counter[gene[0]] += 1
+            setname = gene[0] + str(name_counter[gene[0]])
+            yield PrimerSetRecord([setname,F3,B3,FIP,BIP,'','',B2c,B1c,F2,F1,gene,B3c,''])
 
 
 
@@ -187,8 +221,6 @@ class PrimerSetRecord(OrderedDict):
         return cls(data)
 
     # analysis methods start
-    # Order:
-
 
     def GC_ratio(self,):
         for p,seq in self.iter('primer'):
@@ -226,7 +258,7 @@ class PrimerSetRecord(OrderedDict):
 
     def PrimerDimer(self):
         for (p1,s1),(p2,s2) in product(self.iter('primer'),repeat=2):
-            r = primer3.bindings.calcHeterodimer(s1,s2,mv_conc,dv_conc,dntp_conc) if s1 and s2 else self
+            r = primer3.bindings.calcHeterodimer(s1[0:60],s2[0:60],mv_conc,dv_conc,dntp_conc) if s1 and s2 else self
             self[p1+'-'+p2+'-PDdG']=round(r.dg/1000,4)
             self[p1+'-'+p2+'-PDTm']=round(r.tm,3)
         return self
@@ -251,8 +283,8 @@ class PrimerSetRecord(OrderedDict):
         lfe,_ = REFape.locate_primer(self['F1'])
         _,lrs = REFape.locate_primer(self['B1c'])
         _,lre = REFape.locate_primer(self['B2c'])
-        lf = revcomp(REFape[lfs:lfe])
-        lr = REFape[lrs:lre]
+        lf = revcomp(REFape[lfs:lfe])[0:60]
+        lr = REFape[lrs:lre][0:60]
         lfr=primer3.bindings.calcHairpin(lf, mv_conc,dv_conc,dntp_conc)
         lrr=primer3.bindings.calcHairpin(lr, mv_conc,dv_conc,dntp_conc)
         self['FloopdG'] = round(lfr.dg/1000,4)
@@ -268,7 +300,7 @@ class PrimerSetRecord(OrderedDict):
         s,e = self['A_start'],self['A_end']
         nt = REFape.sequence[0:s] +  REFape.sequence[e:]
         for p,s in self.iter('primer'):
-            tm = LongHeteroDimerTm(s,nt)
+            tm = LongHeteroDimerTm(s,nt) if s else 0
             self[f'{p}-OTTm'] = round(tm,2)
         return self
 
@@ -289,8 +321,10 @@ class PrimerSetRecord(OrderedDict):
     def CrossReactivity(self):
         "check cross reactivity with other viruses; using hamming distance"
         columnname = [f"{i}-CR" for i in CROSS_GENE_NAME]
+        frag = [ j for _,j in self.iter('fragment') if j]
+        fragl = len(frag)
         self.update(zip( columnname,
-                   (sum( homology_hamming(j,i) for _,j in self.iter('fragment') )/8
+                   (sum( homology_hamming(j,i) for j in frag )/ fragl
                     for i in CROSS_GENE_SEQUENCE)))
         return self
 
@@ -321,7 +355,6 @@ class PrimerSetRecordList(list):
 
     def save_csv(self,path,index=False,**kwargs):
         self.table.to_csv(path,index=index,**kwargs)
-
 
 
 if __name__ == '__main__':
