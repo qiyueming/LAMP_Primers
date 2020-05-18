@@ -257,30 +257,39 @@ class PrimerSetRecord(OrderedDict):
         pDimerfilter = PrimerDimerfilter(PrimerDimerTm)
         hPfilter = Hairpinfilter(HairpindG)
         LoopHPfilter = Hairpinfilter(LoopHairpindG)
-        result = "!PD="
+        cmplxfilter = PrimerComplexityfilter()
+        result = ""
         dimer =[]
+        dimernames=[]
         for n,p in self.iter('primer'):
             if p:
                 if not pDimerfilter(p,dimer):
-                    result+=n+'+'+','.join(dimer)
+                    result+="!PD="+n+'+'+','.join(dimernames)
                     break
                 dimer.append(p)
-        result +=';!HP='
+                dimernames.append(n)
+
+        hPfailed = []
         for n,p in self.iter('primer'):
             if p:
                 if not hPfilter(p):
-                    result += n+','
-        result += "!LoopHP="
+                    hPfailed.append(n)
+        if hPfailed: result += '!HP=' + ','.join(hPfailed)
+
         if not LoopHPfilter(self.loopF[0:60]):
-            result += 'LoopF'
+            result += '!LoopF'
         if not LoopHPfilter(self.loopR[0:60]):
-            result += 'LoopR'
+            result += '!LoopR'
+
+        cmplxfailed = []
+        for n,p in self.iter('corefragment'):
+            if p:
+                if not cmplxfilter(p):
+                    cmplxfailed.append(n)
+        if cmplxfailed: result += '!CPX='+','.join(cmplxfailed)
+
         self['checkfilter'] = result
         return self
-
-
-
-
 
 
     def GC_ratio(self,):
