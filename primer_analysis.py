@@ -134,7 +134,7 @@ def iter_primerset_html(files):
 
 
 
-def iter_primerset_lamp_design_csv(files,skiprows=36,usecols=[1,2],skipfooter=0,return_df=False):
+def iter_primerset_lamp_design_csv(*files,skiprows=None,usecols=[1,2],skipfooter=0,return_df=False):
     """
     read all csv files convert to a single DataFrame
     then iterate over primer sets,give it a name based on locus
@@ -144,6 +144,12 @@ def iter_primerset_lamp_design_csv(files,skiprows=36,usecols=[1,2],skipfooter=0,
     df = pd.DataFrame(columns=['name','seq'])
     dfs = [df]
     for f in files:
+        if skiprows == None:
+            with open(f,'rt') as ff:
+                data = ff.read().split('\n')
+            for k,line in enumerate(data):
+                if line.startswith('set'):
+                    skiprows = k
         _df = pd.read_csv(f,skiprows=list(range(skiprows)),usecols=usecols,skipfooter=skipfooter)
         dfs.append(_df)
     df = pd.concat(dfs,axis=0,ignore_index=True)
@@ -442,43 +448,62 @@ class PrimerSetRecordList(list):
         self.table.to_csv(path,index=index,**kwargs)
 
 
+if __name__ == '__main__':
 
 
-mp = PrimerSetRecordList('./LAMP_primer_design_output/my_lamp_primers_processed.csv')
+    mp = PrimerSetRecordList('./LAMP_primer_design_output/my_lamp_primers_processed.csv')
 
-pp = PrimerSetRecordList('./LAMP_primer_design_output/PrimerExplore_Ngene_processed.csv')
+    pp = PrimerSetRecordList('./LAMP_primer_design_output/PrimerExplore_Ngene_processed.csv')
 
-ap = PrimerSetRecordList('./LAMP_primer_design_output/all_design.csv')
+    ap = PrimerSetRecordList('./LAMP_primer_design_output/all_design.csv')
 
-cp = PrimerSetRecordList('./LAMP_primer_design_output/current_processed.csv')
+    cp = PrimerSetRecordList('./LAMP_primer_design_output/current_processed.csv')
 
-mpclean=PrimerSetRecordList('my_lamp_primers_cleaned.csv')
-
-
-BAT.check_homology('ATC')
-BAT[1]
-BAT.label_gene(REFape)
-
-BAT.genes
-
-BAT[21400:21410]
+    mpclean=PrimerSetRecordList('my_lamp_primers_cleaned.csv')
 
 
+    BAT.check_homology('ATC')
+    BAT[1]
+    BAT.label_gene(REFape)
 
-hp = PrimerSetRecordList(iter_primerset_lamp_design_csv(['./LAMP_primer_design_output/LAMP_HOMO_24.0-24.5K_20200518_01_10_40.csv'],skiprows=37,skipfooter=0))
+    BAT.genes
 
-len(hp)
+    BAT[21400:21410]
 
-(hp.Inclusivity()
-   .Amplicon_pos()
-   .CrossReactivity()
-   .Tm()
-   .NonTarget()
-   .Hairpin()
-   .PrimerDimer()
-   .LoopHairpin()
-   .ExtensionStartGCratio(forward=8)
-   .Gaps()
-   .GC_ratio()
-   .Length())
-hp.save_csv('Low Homology First try.csv')
+
+
+    hp = PrimerSetRecordList(iter_primerset_lamp_design_csv(['./LAMP_primer_design_output/LAMP_HOMO_24.0-24.5K_20200518_01_10_40.csv'],skiprows=37,skipfooter=0))
+
+    len(hp)
+
+    (hp.Inclusivity()
+       .Amplicon_pos()
+       .CrossReactivity()
+       .Tm()
+       .NonTarget()
+       .Hairpin()
+       .PrimerDimer()
+       .LoopHairpin()
+       .ExtensionStartGCratio(forward=8)
+       .Gaps()
+       .GC_ratio()
+       .Length())
+    hp.save_csv('Low Homology First try.csv')
+
+
+    BAT.find_seq('ATCAAAACCAAGCAAGAGGTCA')
+
+    BAT[slice(*BAT.find_seq('ATCAAAACCAAGCAAGAGGTCA')[1])]
+
+
+    BAT.check_homology('CTTACACCAGTTGTTCAGACT')
+
+    BAT[slice(*BAT.find_seq('TGCTCACAGATGAAATGATTGCTCA')[1])]
+
+    homology_hamming('GGGGGGGGGGGGGGGGGGGGGG',CROSS_GENE_SEQUENCE[17])
+    CROSS_GENE_NAME
+
+    file = '/Users/hui/Desktop/WFH papers/COVID-19/Virus Genes/APE_SCRIPT/LAMP_primer_design_output/LAMP_design_Quality_0518.csv'
+    rl = PrimerSetRecordList(iter_primerset_lamp_design_csv(file))
+
+    rl.save_csv('LAMP_design_Quality_0518_processed.csv')
