@@ -3,7 +3,7 @@ generate analysis from primer design csv file.
 """
 import glob
 from ape import REFape,read_primerset_excel,APE
-from align_sequence import REF #,BAT
+from align_sequence import REF ,BAT
 import pandas as pd
 from mymodule import revcomp,LazyProperty
 import primer3
@@ -453,3 +453,32 @@ ap = PrimerSetRecordList('./LAMP_primer_design_output/all_design.csv')
 cp = PrimerSetRecordList('./LAMP_primer_design_output/current_processed.csv')
 
 mpclean=PrimerSetRecordList('my_lamp_primers_cleaned.csv')
+
+
+BAT.check_homology('ATC')
+BAT[1]
+BAT.label_gene(REFape)
+
+BAT.genes
+
+BAT[21400:21410]
+
+
+
+hp = PrimerSetRecordList(iter_primerset_lamp_design_csv(['./LAMP_primer_design_output/LAMP_HOMO_24.0-24.5K_20200518_01_10_40.csv'],skiprows=37,skipfooter=0))
+
+len(hp)
+
+(hp.Inclusivity()
+   .Amplicon_pos()
+   .CrossReactivity()
+   .Tm()
+   .NonTarget()
+   .Hairpin()
+   .PrimerDimer()
+   .LoopHairpin()
+   .ExtensionStartGCratio(forward=8)
+   .Gaps()
+   .GC_ratio()
+   .Length())
+hp.save_csv('Low Homology First try.csv')

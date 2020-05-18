@@ -304,7 +304,7 @@ alnfile = './viral_genome/all_align_0512.aln'
 REF = Reference(alnfile=alnfile)
 BAT = Reference(alnfile='./viral_genome/CoV2+Bat.aln')
 REF.label_gene(REFape)
-
+BAT.label_gene(REFape)
 #
 # REF = Reference(alnfile=alnfile)
 #
