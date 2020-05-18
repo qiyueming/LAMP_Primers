@@ -387,7 +387,7 @@ def main_Quality(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_prime
                         for F3,(sF3,eF3) in F3iter:
                             if stop: break
                             if B3c_Count >B3c_CountThreshold:
-                                B3citer.next_pos(5)
+                                B3citer.next_pos(AdjustStep)
                                 break
                             if F3Counter[F3] >= SAME_Fragment_Threshold:continue
                             if eF3>sF2: continue # in case overlap happened.
