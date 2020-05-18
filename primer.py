@@ -261,7 +261,7 @@ class PrimerSetHandler:
         with open(self.path,'at') as f:
             f.write(f"\n====> END On {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} <====")
 
-def main_Fast(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
+def main_Quality(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
     """
     start with F2 -> F1 -> B1 -> B2 -> B3 -> F3 .
     Strong check Homology to bat CoV at F2, B2 and F3, B3.
@@ -290,8 +290,6 @@ def main_Fast(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_primer.c
     LBfilter = CombFilter(TmFilter(LPTm),GCfilter(GCratio),ESfilter(E3),ESCfilter(N=ESC),Hairpinfilter(HairpindG))
     LFcfilter = RCwrapper(LBfilter)
 
-    homologyCounter = HomologyCounter(order=('F2','F3','F1','B1c','B2c','B3c'))
-
     Counters = [Counter() for i in range(5)]
     F1Counter,F3Counter,B1cCounter,B2cCounter,B3cCounter = Counters
 
@@ -309,7 +307,6 @@ def main_Fast(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_primer.c
 
         F2_Count = 0
         if stop:break
-        if not homologyCounter(F2,'F2').check_possibility(sF2-g1[1]-P3L[1],sF2+g6[1]+g5[1]+P3L[1]): break
         F1_start = eF2 + g2[0]
         F1_end = eF2 + g2[1]
         if not pDimerfilter(F2,[]): continue
@@ -319,9 +316,8 @@ def main_Fast(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_primer.c
         for F1, (sF1,eF1) in F1iter:
             F1_Count = 0
             if stop:break
-            if not homologyCounter(F1,'F1').check_possibility((sF2-g1[1]-P3L[1],eF1), (sF2, eF1+g3[1]+P1L[1]+g4[1]+P2L[1]+g5[1]+P3L[1])): break
             if F2_Count > F2_CountThreshold: # if toomany with samfe F2, break out of F1 loop.
-                F2iter.next_pos(10) # if found many in this position, move F2 forward 10 n.t.
+                F2iter.next_pos(AdjustStep) # if found many in this position, move F2 forward 10 n.t.
                 break
 
             B1c_start = eF1 + g3[0]
@@ -342,9 +338,8 @@ def main_Fast(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_primer.c
             for B1c, (sB1c,eB1c) in B1citer:
                 B1c_Count = 0
                 if stop:break
-                if not homologyCounter(B1c,'B1c').check_possibility((sF2-g1[1]-P3L[1],eB1c), (sF2, eB1c+g4[1]+P2L[1]+g5[1]+P3L[1])): break
                 if F1_Count > F1_CountThreshold:
-                    F1iter.next_pos(5)
+                    F1iter.next_pos(AdjustStep)
                     break
                 if B1cCounter[B1c] >= SAME_Fragment_Threshold:continue
                 B2c_start = eB1c + g4[0]
@@ -354,9 +349,8 @@ def main_Fast(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_primer.c
                 for B2c, (sB2c,eB2c) in B2citer:
                     B2c_Count = 0
                     if stop:break
-                    if not homologyCounter(B2c,'B2c').check_possibility((sF2-g1[1]-P3L[1],eB2c), (sF2, eB2c+g5[1]+P3L[1])): break
                     if B1c_Count > B1c_CountThreshold:
-                        B1citer.next_pos(5)
+                        B1citer.next_pos(AdjustStep)
                         break
                     if eB2c - sF2 > g6[1] or eB2c - sF2 < g6[0]: # if there is no room for B2 to satisfy g6.
                         B1citer.next_pos(1000) # end B1 iteration
@@ -380,9 +374,8 @@ def main_Fast(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_primer.c
                     for B3c,(sB3c,eB3c) in B3citer:
                         B3c_Count = 0
                         if stop: break
-                        if not homologyCounter(B3c,'B3c').check_possibility(sF2-g1[1]-P3L[1],sF2): break
                         if B2c_Count > B2c_CountThreshold:
-                            B2citer.next_pos(5)
+                            B2citer.next_pos(AdjustStep)
                             break
                         if B3cCounter[B3c] >= SAME_Fragment_Threshold:continue
                         B3 = revcomp(B3c)
@@ -419,19 +412,18 @@ def main_Fast(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_primer.c
 
                             primerset = (F3,F2,F1,B1c,B2c,B3c,LFc,LB)
                             # save if 3 of the core primers have homology specificity.
-                            if sum([hOmofilterF(i) for i in primerset[0:3]] + [hOmofilterR(i) for i in primerset[3:6]])>=BatHomologyCount:
-                                SavePrimerSet(primerset)
-                                primerset_counter += 1
-                                F2_Count+=1
-                                F1_Count+=1
-                                B1c_Count+=1
-                                B2c_Count+=1
-                                B3c_Count+=1
-                                F1Counter[F1] +=1
-                                F3Counter[F3] +=1
-                                B1cCounter[B1c] +=1
-                                B2cCounter[B2c] +=1
-                                B3cCounter[B3c] +=1
+                            SavePrimerSet(primerset)
+                            primerset_counter += 1
+                            F2_Count+=1
+                            F1_Count+=1
+                            B1c_Count+=1
+                            B2c_Count+=1
+                            B3c_Count+=1
+                            F1Counter[F1] +=1
+                            F3Counter[F3] +=1
+                            B1cCounter[B1c] +=1
+                            B2cCounter[B2c] +=1
+                            B3cCounter[B3c] +=1
                             # move F2 and everything forward.
                             if primerset_counter > MAX_primerset:
                                 stop = True
