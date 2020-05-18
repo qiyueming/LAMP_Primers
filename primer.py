@@ -128,16 +128,17 @@ def RCwrapper(func):
         return func(revcomp(seq))
     return wrap
 
-def Hairpinfilter(dG=-4,return_value=False):
+def Hairpinfilter(dG=-4,check3=0,return_value=False):
     "filter out primer with high dG or 3' end stem."
     def wrap(seq="GCCAAAAGGCTTCTACGCA"):
         r=primer3.bindings.calcHairpin(seq, mv_conc,dv_conc,dntp_conc,output_structure=True )
         if return_value: return r
         if not r.ascii_structure: return True
-        if r.dg/1000>dG and r.ascii_structure_lines[0][-2:]=='--':
+        if r.dg/1000>dG and r.ascii_structure_lines[0][len(r.ascii_structure_lines[0])-check3:]=='-'*check3: # this '--' requirement is very stringent.
             return True
         return False
     return wrap
+
 
 def PrimerDimerfilter(Tm=30,return_value=False):
     """
@@ -148,7 +149,10 @@ def PrimerDimerfilter(Tm=30,return_value=False):
     """
     def checkhairpin(r):
         "return True if result have extendable hairpin"
-        if r.tm<Tm: return False
+        if r.tm<Tm:
+            return False
+        elif r.tm>=60:
+            return True
         lines = r.ascii_structure_lines
         for i,j in zip(lines[0][::-1],lines[1][::-1]):
             if i.isalpha(): break
@@ -241,114 +245,6 @@ class PrimerSetHandler:
         'write a line to indicate its done.'
         with open(self.path,'at') as f:
             f.write(f"\n====> END On {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} <====")
-
-def main(target=None,step=1,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
-    """
-    start from F3 to B3.
-    """
-    pDimerfilter = PrimerDimerfilter(PrimerDimerTm)
-    hPfilter = Hairpinfilter(HairpindG)
-    LoopHPfilter = Hairpinfilter(LoopHairpindG)
-    hOmofilterF = HoMofilter(BatHomology,BatHomologyEnd,'F')
-    hOmofilterR = HoMofilter(BatHomology,BatHomologyEnd,'R')
-
-    F3filter = CombFilter(TmFilter(P3Tm),GCfilter(GCratio),ESfilter(E3),ESCfilter(N=ESC),Hairpinfilter(HairpindG),PrimerComplexityfilter())
-    F2filter = CombFilter(TmFilter(P2Tm),GCfilter(GCratio),ESfilter(E3),ESCfilter(N=ESC),PrimerComplexityfilter())
-    F1filter = CombFilter(TmFilter(P1Tm),GCfilter(GCratio),ESfilter(E3),ESCfilter(N=ESC),PrimerComplexityfilter())
-    B1cfilter = RCwrapper(F1filter)
-    B2cfilter = RCwrapper(F2filter)
-    B3cfilter = RCwrapper(F3filter)
-    LBfilter = CombFilter(TmFilter(LPTm),GCfilter(GCratio),ESfilter(E3),ESCfilter(N=ESC),Hairpinfilter(HairpindG))
-    LFcfilter = RCwrapper(LBfilter)
-
-    if isinstance(target,str):
-        F3_start, F3_end = REF.genes[target]
-    else:
-        F3_start, F3_end = target
-        target = 'W'
-
-    stop = False
-
-    primerset_counter = 0
-
-    SavePrimerSet=PrimerSetHandler(savepath,prefix=target[0],batchcount=5)
-
-    progress = ProgressBar(limits=(F3_start,F3_end))
-    F3iter = REF.primer_iter(F3_start,F3_end,P3L,PInclu,F3filter,step)
-    for F3,(sF3,eF3) in F3iter:
-        progress(sF3)
-        if stop: break
-        F2_start = eF3 + g1[0]
-        F2_end = eF3 + g1[1]
-        if not pDimerfilter(F3,[]): continue
-
-        F2iter = REF.primer_iter(F2_start,F2_end,P2L,PInclu,F2filter,)
-        for F2, (sF2,eF2) in F2iter:
-            if stop:break
-            F1_start = eF2 + g2[0]
-            F1_end = eF2 + g2[1]
-            if not pDimerfilter(F2,[F3]): continue
-
-            F1iter = REF.primer_iter(F1_start,F1_end,P1L,PInclu,F1filter)
-            for F1, (sF1,eF1) in F1iter:
-                if stop:break
-                B1c_start = eF1 + g3[0]
-                B1c_end = eF1 + g3[1]
-                FIP = revcomp(F1)+F2
-                maxloopfc =  revcomp(REF.ref[sF2:sF1].replace('-','')[0:59])
-                if not LoopHPfilter(maxloopfc): break # break this F1 if strong loop formed.
-                if not hPfilter(FIP): continue
-                if not pDimerfilter(FIP,[F3]): continue
-
-
-                B1citer = REF.primer_iter(B1c_start,B1c_end,P1L,PInclu,B1cfilter)
-                for B1c, (sB1c,eB1c) in B1citer:
-                    if stop:break
-                    B2c_start = eB1c + g4[0]
-                    B2c_end = eB1c + g4[1]
-
-                    B2citer = REF.primer_iter(B2c_start,B2c_end,P2L,PInclu,B2cfilter)
-                    for B2c, (sB2c,eB2c) in B2citer:
-                        if stop:break
-                        if eB2c - sF2 > g6[1] or eB2c - sF2 < g6[0]: # if there is no room for B2 to satisfy g6.
-                            break
-                        B3c_start = eB2c + g5[0]
-                        B3c_end = eB2c + g5[1]
-                        BIP = B1c + revcomp(B2c)
-                        maxloopr =  REF.ref[eB1c:eB2c].replace('-','')[0:59]
-                        if not LoopHPfilter(maxloopr): break
-                        if not hPfilter(BIP): continue
-                        if not pDimerfilter(BIP,[F3,FIP]): continue
-
-                        B3citer = REF.primer_iter(B3c_start,B3c_end,P3L,PInclu,B3cfilter)
-                        for B3c,(sB3c,eB3c) in B3citer:
-                            if stop: break
-                            B3 = revcomp(B3c)
-                            if not pDimerfilter(B3,[F3,FIP,BIP]): continue
-
-                            LFfound = False
-                            for LFc, (sLFc,eLFc) in REF.primer_iter(eF2,sF1,LPL,LoopInclu,LFcfilter):
-                                LF = revcomp(LFc)
-                                if not pDimerfilter(LF,[F3,B3,BIP,FIP]): continue
-                                LFfound=True
-                                break
-                            if not LFfound: continue
-
-                            LBfound = False
-                            for LB, (sLB,eLB) in REF.primer_iter(eB1c,sB2c,LPL,LoopInclu,LBfilter):
-                                if not pDimerfilter(LB,[F3,B3,BIP,FIP,LF]): continue
-                                LBfound = True
-                                break
-                            if not LBfound: continue
-
-                            primerset = (F3,F2,F1,B1c,B2c,B3c,LFc,LB)
-                            # if sum([hOmofilterF(i) for i in primerset[0:3]] + [hOmofilterR(i) for i in primerset[3:6]])>=3: # at least 3 of the 6 are satisfied.
-                            SavePrimerSet(primerset)
-                            primerset_counter += 1
-                            if primerset_counter > MAX_primerset:
-                                stop = True
-    SavePrimerSet.write()
-    SavePrimerSet.done()
 
 def main_limit_count(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_primer.csv'):
     """
@@ -533,8 +429,8 @@ def main_Counter(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_prime
         A_start, A_end = REF.genes[target]
 
     pDimerfilter = PrimerDimerfilter(PrimerDimerTm)
-    hPfilter = Hairpinfilter(HairpindG)
-    LoopHPfilter = Hairpinfilter(LoopHairpindG)
+    hPfilter = Hairpinfilter(HairpindG,check3=0)
+    LoopHPfilter = Hairpinfilter(LoopHairpindG,check3=0)
     hOmofilterF = HoMofilter(BatHomology,BatHomologyEnd,'F')
     hOmofilterR = HoMofilter(BatHomology,BatHomologyEnd,'R')
 
@@ -661,15 +557,17 @@ def main_Counter(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_prime
                             if not pDimerfilter(F3,[B3,FIP,BIP]): continue
 
                             LFfound = False
-                            for LFc, (sLFc,eLFc) in REF.primer_iter(eF2,sF1,LPL,LoopInclu,LFcfilter):
+                            for LFc, (sLFc,eLFc) in REF.primer_iter(eF2,sF1-LPL[0],LPL,LoopInclu,LFcfilter):
                                 LF = revcomp(LFc)
+                                if eLFc > sF1: break
                                 if not pDimerfilter(LF,[F3,B3,BIP,FIP]): continue
                                 LFfound=True
                                 break
                             if not LFfound: continue
 
                             LBfound = False
-                            for LB, (sLB,eLB) in REF.primer_iter(eB1c,sB2c,LPL,LoopInclu,LBfilter):
+                            for LB, (sLB,eLB) in REF.primer_iter(eB1c,sB2c-LPL[0],LPL,LoopInclu,LBfilter):
+                                if eLB > sB2c: break
                                 if not pDimerfilter(LB,[F3,B3,BIP,FIP,LF]): continue
                                 LBfound = True
                                 break
@@ -699,10 +597,13 @@ def main_Counter(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_prime
     print(f'Runing {target} ({A_start}-{A_end}) Finished.\n')
     return 0
 
-
 if __name__=='__main__':
     F3filter = CombFilter(TmFilter(P3Tm),GCfilter(GCratio),ESfilter(E3),ESCfilter(N=ESC),Hairpinfilter(HairpindG),PrimerComplexityfilter())
     B3citer = REF.primer_iter(3000,3500,P3L,PInclu,F3filter)
     r= list(B3citer)
 
     len(r)
+
+    pDimerfilter = PrimerDimerfilter(PrimerDimerTm)
+
+    pDimerfilter('TTACACCATGTTCTTTTGGTGGTGT',['GACACTACTGATGCTGTCCGTGATCACCACCAAAAGAACATGGTGTA'])

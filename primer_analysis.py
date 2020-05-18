@@ -7,13 +7,19 @@ from align_sequence import REF #,BAT
 import pandas as pd
 from mymodule import revcomp,LazyProperty
 import primer3
-from itertools import product
+from itertools import product,combinations_with_replacement
 from collections import Counter,OrderedDict
 from primer_para import mv_conc,dv_conc,dntp_conc
 from resources import CROSS_GENE_FILE,CROSS_GENE_NAME
 from crossreactivity import print_ascii_structure
 from Levenshtein import distance
 import re
+import seaborn as sns
+import matplotlib.pyplot as plt
+from primer import PrimerDimerfilter,PrimerComplexityfilter,Hairpinfilter
+from primer_para import *
+from sklearn import preprocessing
+import numpy as np
 
 CROSS_GENE_SEQUENCE = [ APE(i).sequence for i in CROSS_GENE_FILE]
 CROSS_GENE_SEQUENCE[0][-20:]
@@ -46,6 +52,11 @@ def LongHeteroDimerTm(primer,sequence):
             maxtm = tm
     return maxtm
 
+def draw_hairpin(seq):
+    r=primer3.bindings.calcHairpin(seq, mv_conc,dv_conc,dntp_conc,output_structure=True )
+    print(r.dg)
+    print(r.tm)
+    print(r.ascii_structure)
 
 def HeteroDimerAnneal(primer,sequence):
     "mv_conc,dv_conc,"
@@ -148,7 +159,11 @@ def iter_primerset_lamp_design_csv(files,skiprows=36,usecols=[1,2],skipfooter=0,
             yield PrimerSetRecord([setname,F3,revcomp(B3c),revcomp(F1)+F2,
                   B1c+revcomp(B2c),revcomp(LFc),LB,B2c,B1c,F2,F1,gene,B3c,LFc])
 
-
+def normalizedf(df,columns):
+    x = df.loc[:,columns].values
+    minmaxscalar = preprocessing.MinMaxScaler()
+    x_scaled = minmaxscalar.fit_transform(x)
+    df.loc[:,columns] = x_scaled
 
 class PrimerSetRecord(OrderedDict):
     """
@@ -159,12 +174,17 @@ class PrimerSetRecord(OrderedDict):
     sequence_order = ('F3','B3','FIP','BIP','LF','LB','B2c','B1c','F2','F1')
     fragment_order = ('F3','F2','F1','B3c','B2c','B1c','LFc','LB',)
     primer_order = ('F3','B3','FIP','BIP','LF','LB',)
+    corefragment_order = ('F3','F2','F1','B3c','B2c','B1c')
     def __init__(self,inputs):
         if isinstance(inputs,list):
             super().__init__(zip(
             ['name','F3','B3','FIP','BIP','LF','LB','B2c','B1c','F2','F1','gene','B3c','LFc'],inputs))
         else:
             super().__init__(inputs)
+
+    def __hash__(self):
+        s = ''.join(i[1] for i in self.iter('corefragment'))
+        return s.__hash__()
 
     @property
     def dg(self):
@@ -220,7 +240,48 @@ class PrimerSetRecord(OrderedDict):
     def hyrolize(cls,data):
         return cls(data)
 
+    def to_ape(self,):
+        primers = dict(self.iter('primer'))
+        return REFape.label_from_primers(primers,name=self['name'])
+
+    @LazyProperty
+    def loopF(self):
+        return revcomp(REFape[REFape.locate_primer(self['F2'])[0]:REFape.locate_primer(self['F1'])[0]])
+
+    @LazyProperty
+    def loopR(self):
+        return  REFape[REFape.locate_primer(self['B1c'])[1]:REFape.locate_primer(self['B2c'])[1]]
+
     # analysis methods start
+    def CheckFilter(self):
+        pDimerfilter = PrimerDimerfilter(PrimerDimerTm)
+        hPfilter = Hairpinfilter(HairpindG)
+        LoopHPfilter = Hairpinfilter(LoopHairpindG)
+        result = "!PD="
+        dimer =[]
+        for n,p in self.iter('primer'):
+            if p:
+                if not pDimerfilter(p,dimer):
+                    result+=n+'+'+','.join(dimer)
+                    break
+                dimer.append(p)
+        result +=';!HP='
+        for n,p in self.iter('primer'):
+            if p:
+                if not hPfilter(p):
+                    result += n+','
+        result += "!LoopHP="
+        if not LoopHPfilter(self.loopF[0:60]):
+            result += 'LoopF'
+        if not LoopHPfilter(self.loopR[0:60]):
+            result += 'LoopR'
+        self['checkfilter'] = result
+        return self
+
+
+
+
+
 
     def GC_ratio(self,):
         for p,seq in self.iter('primer'):
@@ -257,7 +318,7 @@ class PrimerSetRecord(OrderedDict):
         return self
 
     def PrimerDimer(self):
-        for (p1,s1),(p2,s2) in product(self.iter('primer'),repeat=2):
+        for (p1,s1),(p2,s2) in combinations_with_replacement(self.iter('primer'),r=2):
             r = primer3.bindings.calcHeterodimer(s1[0:60],s2[0:60],mv_conc,dv_conc,dntp_conc) if s1 and s2 else self
             self[p1+'-'+p2+'-PDdG']=round(r.dg/1000,4)
             self[p1+'-'+p2+'-PDTm']=round(r.tm,3)
@@ -342,12 +403,27 @@ class PrimerSetRecordList(list):
             return super().__getitem__(slice)
         else:
             return PrimerSetRecordList(super().__getitem__(slice))
+    def get(self,name):
+        for i in self:
+            if i['name'] == name:
+                return i
+    def __add__(self,b):
+        r = list(self) + list(b)
+        return PrimerSetRecordList(r)
 
     def __getattr__(self,attr):
         def wrap(*args,**kwargs):
             [getattr(i,attr)(*args,**kwargs) for i in self]
             return self
         return wrap
+
+    def reindex(self):
+        gencounter = Counter()
+        for i in self:
+            g=i['gene'][0]
+            gencounter[g]+=1
+            i['name']=f"{g}{gencounter[g]}"
+        return self
 
     @property
     def table(self):
@@ -357,5 +433,14 @@ class PrimerSetRecordList(list):
         self.table.to_csv(path,index=index,**kwargs)
 
 
-if __name__ == '__main__':
-    pl = PrimerSetRecordList('./LAMP_primer_design_output/my_lamp_primers.csv')
+
+
+mp = PrimerSetRecordList('./LAMP_primer_design_output/my_lamp_primers_processed.csv')
+
+pp = PrimerSetRecordList('./LAMP_primer_design_output/PrimerExplore_Ngene_processed.csv')
+
+ap = PrimerSetRecordList('./LAMP_primer_design_output/all_design.csv')
+
+cp = PrimerSetRecordList('./LAMP_primer_design_output/current_processed.csv')
+
+mpclean=PrimerSetRecordList('my_lamp_primers_cleaned.csv')
