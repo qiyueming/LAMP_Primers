@@ -195,10 +195,6 @@ def average_primerset_homology(primerset):
     return max(sum(aa)/8, sum(bb)/8, sum(cc)/8)
 
 
-
-
-
-
 class HomologyCounter(dict):
     """
     To keep track of how many remaning homology fragment needed.
