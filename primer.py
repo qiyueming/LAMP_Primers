@@ -287,7 +287,7 @@ def main_Quality(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_prime
     B2cfilter = RCwrapper(F2filter)
     B3cfilter = RCwrapper(F3filter)
 
-    LBfilter = CombFilter(TmFilter(LPTm),GCfilter(GCratio),ESfilter(E3),ESCfilter(N=ESC),Hairpinfilter(HairpindG))
+    LBfilter = CombFilter(TmFilter(LPTm),GCfilter(GCratio),ESfilter(E3),ESCfilter(N=ESC),Hairpinfilter(HairpindG),PrimerComplexityfilter())
     LFcfilter = RCwrapper(LBfilter)
 
     Counters = [Counter() for i in range(5)]
@@ -460,7 +460,7 @@ def main_Counter(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_prime
     B2cfilter = RCwrapper(F2filter)
     B3cfilter = RCwrapper(F3filter)
 
-    LBfilter = CombFilter(TmFilter(LPTm),GCfilter(GCratio),ESfilter(E3),ESCfilter(N=ESC),Hairpinfilter(HairpindG))
+    LBfilter = CombFilter(TmFilter(LPTm),GCfilter(GCratio),ESfilter(E3),ESCfilter(N=ESC),Hairpinfilter(HairpindG),PrimerComplexityfilter())
     LFcfilter = RCwrapper(LBfilter)
 
     homologyCounter = HomologyCounter(order=('F2','F3','F1','B1c','B2c','B3c'))
@@ -642,7 +642,7 @@ def main_Homology(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_prim
     B2cfilter = RCwrapper(F2filter)
     B3cfilter = RCwrapper(F3filter)
 
-    LBfilter = CombFilter(TmFilter(LPTm),GCfilter(GCratio),ESfilter(E3),ESCfilter(N=ESC),Hairpinfilter(HairpindG))
+    LBfilter = CombFilter(TmFilter(LPTm),GCfilter(GCratio),ESfilter(E3),ESCfilter(N=ESC),Hairpinfilter(HairpindG),PrimerComplexityfilter())
     LFcfilter = RCwrapper(LBfilter)
 
     homologyCounter = HomologyCounter(order=('F2','F3','F1','B1c','B2c','B3c'))

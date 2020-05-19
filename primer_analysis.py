@@ -7,7 +7,7 @@ from align_sequence import REF ,BAT
 import pandas as pd
 from mymodule import revcomp,LazyProperty
 import primer3
-from itertools import product,combinations_with_replacement
+from itertools import combinations_with_replacement
 from collections import Counter,OrderedDict
 from primer_para import mv_conc,dv_conc,dntp_conc
 from resources import CROSS_GENE_FILE,CROSS_GENE_NAME
@@ -130,9 +130,6 @@ def iter_primerset_html(files):
             name_counter[gene[0]] += 1
             setname = gene[0] + str(name_counter[gene[0]])
             yield PrimerSetRecord([setname,F3,B3,FIP,BIP,'','',B2c,B1c,F2,F1,gene,B3c,''])
-
-
-
 
 def iter_primerset_lamp_design_csv(*files,skiprows=None,usecols=[1,2],skipfooter=0,return_df=False):
     """
@@ -288,7 +285,7 @@ class PrimerSetRecord(OrderedDict):
             result += '!LoopR'
 
         cmplxfailed = []
-        for n,p in self.iter('corefragment'):
+        for n,p in self.iter('fragment'):
             if p:
                 if not cmplxfilter(p):
                     cmplxfailed.append(n)
@@ -311,6 +308,12 @@ class PrimerSetRecord(OrderedDict):
         _,e=REFape.locate_primer(B3c)
         self['A_start']=s
         self['A_end']=e
+        return self
+
+    def Amplicon_len(self):
+        if 'A_end' not in self.keys():
+            self.Amplicon_pos()
+        self['A_length']=self['A_end']-self['A_start']
         return self
 
     def Length(self,):
@@ -433,6 +436,7 @@ class PrimerSetRecordList(list):
         return wrap
 
     def reindex(self):
+        "rename the primers in the set."
         gencounter = Counter()
         for i in self:
             g=i['gene'][0]
@@ -446,6 +450,7 @@ class PrimerSetRecordList(list):
 
     def save_csv(self,path,index=False,**kwargs):
         self.table.to_csv(path,index=index,**kwargs)
+
 
 
 if __name__ == '__main__':
