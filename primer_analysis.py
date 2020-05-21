@@ -14,7 +14,6 @@ from resources import CROSS_GENE_FILE,CROSS_GENE_NAME
 from crossreactivity import print_ascii_structure
 from Levenshtein import distance
 import re
-import seaborn as sns
 import matplotlib.pyplot as plt
 from primer import PrimerDimerfilter,PrimerComplexityfilter,Hairpinfilter
 from primer_para import *
@@ -421,6 +420,12 @@ class PrimerSetRecordList(list):
     def __getitem__(self,slice):
         if isinstance(slice,int):
             return super().__getitem__(slice)
+        elif isinstance(slice,str):
+            for r in self:
+                if r['name']==slice:
+                    return r
+        elif isinstance(slice,tuple) or isinstance(slice,list):
+            return PrimerSetRecordList(i for i in self if i['name'] in slice)
         else:
             return PrimerSetRecordList(super().__getitem__(slice))
     def get(self,name):
