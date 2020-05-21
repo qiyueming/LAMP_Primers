@@ -20,6 +20,7 @@ from primer import PrimerDimerfilter,PrimerComplexityfilter,Hairpinfilter
 from primer_para import *
 from sklearn import preprocessing
 import numpy as np
+import matplotlib.pyplot as plt
 
 CROSS_GENE_SEQUENCE = [ APE(i).sequence for i in CROSS_GENE_FILE]
 CROSS_GENE_SEQUENCE[0][-20:]
@@ -156,6 +157,8 @@ def iter_primerset_lamp_design_csv(*files,skiprows=None,usecols=[1,2],skipfooter
         name_counter = Counter()
         for i in range((len(df)//8)):
             F3, F2, F1, B1c, B2c, B3c, LFc, LB = list(df.loc[i*8:(i*8+7),'seq'])
+            names = list(df.loc[i*8:(i*8+7),'name'])
+            assert len(set(names)) == 8, f"Primer set incomplete at index {i}."
             gene = REFape.name_primer(F1)
             name_counter[gene[0]] += 1
             setname = gene[0] + str(name_counter[gene[0]])
@@ -293,7 +296,6 @@ class PrimerSetRecord(OrderedDict):
 
         self['checkfilter'] = result
         return self
-
 
     def GC_ratio(self,):
         for p,seq in self.iter('primer'):
@@ -451,6 +453,40 @@ class PrimerSetRecordList(list):
     def save_csv(self,path,index=False,**kwargs):
         self.table.to_csv(path,index=index,**kwargs)
 
+    def draw_primerset(self,saveas=False):
+        pl = self
+        facecolor = ('tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:pink','tab:olive')
+        fig, ax = plt.subplots(figsize=(10,0.3*len(pl) + 1  ))
+        left_pos = [REFape.locate_primer(i['F3'])[0] for i in pl]
+        right_pos = [REFape.locate_primer(i['B3c'])[1] for i in pl]
+        left_min = min(left_pos)
+        right_min = max(right_pos)
+        common_fragment = REFape.truncate(left_min,right_min)
+        gene_bar = [ (i['start']-1,i['end'] - i['start']+1) for i in common_fragment.features]
+        gene_bar_name = [f"{ i['tag']}:{i['start']+left_min}-{i['end']+left_min}" for i in common_fragment.features]
+        y_labels = [i['name'] for  i in pl]
+        ax.set_yticks(list(range(len(y_labels))))
+        ax.set_yticklabels(y_labels)
+        ax.set_ylim([-1,1+len(pl)])
+        for y,p in enumerate(pl):
+            plot_bar = []
+            plot_bar_name = p.fragment_order
+            for n,i in p.iter('fragment'):
+                pos = REFape.locate_primer(i)
+                plot_bar.append((pos[0],pos[1]-pos[0]))
+            plot_bar = [(i-left_min,j) for i,j in plot_bar]
+            ax.broken_barh(plot_bar, (y - 0.3, 0.6), facecolors=facecolor)
+            for n,(p,w) in zip(plot_bar_name,plot_bar):
+                ax.text(p+w/2,y-0.3,n,ha='center',va='bottom')
+        ax.broken_barh(gene_bar,(y+0.7,0.6),facecolor=facecolor)
+        for n,(p,w) in zip(gene_bar_name,gene_bar):
+            ax.text(p+w/2,y+0.7,n,ha='center',va='bottom')
+        ax.set_xticks([])
+        plt.tight_layout()
+        if saveas:
+            plt.savefig(saveas)
+        else:
+            plt.show()
 
 
 if __name__ == '__main__':
