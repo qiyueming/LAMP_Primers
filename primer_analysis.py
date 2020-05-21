@@ -411,12 +411,12 @@ class PrimerSetRecord(OrderedDict):
 
 class PrimerSetRecordList(list):
     "a list collections of PrimerSetRecord, can be initiated from path to csv."
-    def __init__(self,inputs,*args,**kwargs):
+    def __init__(self,inputs=None,*args,**kwargs):
         if isinstance(inputs,str):
             df = pd.read_csv(inputs,*args,keep_default_na=False,**kwargs)
             super().__init__(df.to_dict(orient="records",into=PrimerSetRecord))
         else:
-            super().__init__(inputs)
+            super().__init__(inputs or [])
 
     def __getitem__(self,slice):
         if isinstance(slice,int):
@@ -453,8 +453,11 @@ class PrimerSetRecordList(list):
     def save_csv(self,path,index=False,**kwargs):
         self.table.to_csv(path,index=index,**kwargs)
 
-    def draw_primerset(self,saveas=False):
+    def draw_primerset(self,interval=None,saveas=False):
+        "draw ther primers on plot."
         pl = self
+        if interval:
+            pl = PrimerSetRecordList(i for i in pl if i['A_start']>=interval[0] and i['A_end']<=interval[1])
         facecolor = ('tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:pink','tab:olive')
         fig, ax = plt.subplots(figsize=(10,0.3*len(pl) + 1  ))
         left_pos = [REFape.locate_primer(i['F3'])[0] for i in pl]
@@ -465,7 +468,9 @@ class PrimerSetRecordList(list):
         gene_bar = [ (i['start']-1,i['end'] - i['start']+1) for i in common_fragment.features]
         gene_bar_name = [f"{ i['tag']}:{i['start']+left_min}-{i['end']+left_min}" for i in common_fragment.features]
         y_labels = [i['name'] for  i in pl]
+
         ax.set_yticks(list(range(len(y_labels))))
+
         ax.set_yticklabels(y_labels)
         ax.set_ylim([-1,1+len(pl)])
         for y,p in enumerate(pl):
@@ -487,6 +492,25 @@ class PrimerSetRecordList(list):
             plt.savefig(saveas)
         else:
             plt.show()
+
+    def condense(self,sortfunc=None):
+        collection = {}
+        for i in self:
+            key = i['F2'] + i['F1']+i['B1c'] + i['B2c']
+            if key in collection:
+                collection[key].append(i)
+            else:
+                collection[key]=[i]
+        condensed = PrimerSetRecordList()
+        def default(r):
+            return (-sum(r[i] for i in r.keys() if i.endswith('PDdG') and ('B3' in i or 'F3' in i)) , r['A_end']-r['A_start'],)
+        if sortfunc == None:
+            sortfunc = default
+        for k,i in collection.items():
+            condensed.append( sorted(i,key=sortfunc)[0])
+        return condensed
+
+
 
 
 if __name__ == '__main__':
