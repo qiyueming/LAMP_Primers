@@ -417,7 +417,7 @@ class PrimerSetRecordList(list):
         else:
             super().__init__(inputs or [])
 
-    def __getitem__(self,slice):
+    def __getitem__(self,slice,):
         if isinstance(slice,int):
             return super().__getitem__(slice)
         elif isinstance(slice,str):
@@ -458,47 +458,89 @@ class PrimerSetRecordList(list):
     def save_csv(self,path,index=False,**kwargs):
         self.table.to_csv(path,index=index,**kwargs)
 
-    def draw_primerset(self,interval=None,saveas=False):
-        "draw ther primers on plot."
+    def draw_primerset(self,basepairposition=None,saveas=False,alignwith=None,drawgene=True,drawproperty=[],figwidth=None,figheight=None,drawgrid=False):
+        """
+        draw ther primers on plot.
+        basepairposition: draw only primerset record with A_start and A_end within the interval given.
+        saveas: file path to save.
+        alignwith: the gene fragment to aligh, defalut align to gene. can be F3, F2, F1, B1c, LFc, LB etc.
+        drawgene: choose whether draw the genebar.
+        drawproperty: a list of (property_name, property_format) to draw. ('Inclusivity','{:.2%}')
+        """
         pl = self
-        if interval:
-            pl = PrimerSetRecordList(i for i in pl if i['A_start']>=interval[0] and i['A_end']<=interval[1])
+        if basepairposition:
+            pl = PrimerSetRecordList(i for i in pl if i['A_start']>=basepairposition[0] and i['A_end']<=basepairposition[1])
         facecolor = ('tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:pink','tab:olive')
-        fig, ax = plt.subplots(figsize=(10,0.3*len(pl) + 1  ))
+
+        fig, ax = plt.subplots(figsize=(figwidth or 10,figheight or  0.26*(len(pl)+drawgene)+0.68 ))
         left_pos = [REFape.locate_primer(i['F3'])[0] for i in pl]
         right_pos = [REFape.locate_primer(i['B3c'])[1] for i in pl]
         left_min = min(left_pos)
         right_min = max(right_pos)
         common_fragment = REFape.truncate(left_min,right_min)
         gene_bar = [ (i['start']-1,i['end'] - i['start']+1) for i in common_fragment.features]
-        gene_bar_name = [f"{ i['tag']}:{i['start']+left_min}-{i['end']+left_min}" for i in common_fragment.features]
+        # plot realative position to N gene:
+        gene_bar_name = [f"{ i['tag']}:{i['start']+left_min - REFape.get_feature_pos(i['tag'])[0]}-{i['end']+left_min- REFape.get_feature_pos(i['tag'])[0]}" for i in common_fragment.features]
         y_labels = [i['name'] for  i in pl]
 
         ax.set_yticks(list(range(len(y_labels))))
-
+        if drawgrid:
+            ax.grid(axis='y',linewidth=0.3,linestyle='-.')
         ax.set_yticklabels(y_labels)
-        ax.set_ylim([-1,1+len(pl)])
+        ax.set_ylim([-1,len(pl)+drawgene])
         for y,p in enumerate(pl):
             plot_bar = []
             plot_bar_name = p.fragment_order
             for n,i in p.iter('fragment'):
                 pos = REFape.locate_primer(i)
                 plot_bar.append((pos[0],pos[1]-pos[0]))
+            # if alignwith = F3 or other fragment name, use that position.
+            if alignwith:
+                _index = plot_bar_name.index(alignwith)
+                left_min = plot_bar[_index][0]
+            # relative position of the primer to this gene.
+            _relative_left = REFape.get_relative_pos(plot_bar[0][0])
+            relative_left = f"{_relative_left[1]+1}" if _relative_left else f"{plot_bar[0][0]}"
+            _relative_right = REFape.get_relative_pos(plot_bar[3][0])
+            relative_right = f"{_relative_right[1]+plot_bar[3][1]}" if _relative_right else f"{plot_bar[3][0]}"
+
             plot_bar = [(i-left_min,j) for i,j in plot_bar]
             ax.broken_barh(plot_bar, (y - 0.3, 0.6), facecolors=facecolor)
-            for n,(p,w) in zip(plot_bar_name,plot_bar):
-                ax.text(p+w/2,y-0.3,n,ha='center',va='bottom')
-        ax.broken_barh(gene_bar,(y+0.7,0.6),facecolor=facecolor)
-        for n,(p,w) in zip(gene_bar_name,gene_bar):
-            ax.text(p+w/2,y+0.7,n,ha='center',va='bottom')
+            for n,(_p,w) in zip(plot_bar_name,plot_bar):
+                ax.text(_p+w/2,y-0.3,n,ha='center',va='bottom')
+
+            ax.text(plot_bar[0][0]-plot_bar[0][1]*0.05,y-0.3,relative_left,ha='right',va='bottom')
+            ax.text(plot_bar[3][0]+plot_bar[3][1]*1.05,y-0.3,relative_right,ha='left',va='bottom')
+            if drawproperty:
+                propertytext = []
+                for i,f in drawproperty:
+                    propertytext.append(f.format(p[i]))
+                ax.text((right_min - left_min)*1.06, y-0.3 ," "+' | '.join(propertytext), ha='left',va='bottom',family='monospace')
+
+        if drawproperty:
+            ax.text((right_min - left_min)*1.06, y+0.7 ,'|'.join(i[0][0:(len(t)+2)] + " "*(len(t)+2 - len(i[0])) for i,t in zip(drawproperty,propertytext)), ha='left',va='bottom',family='monospace')
+
+        # if need to draw gen:
+        if drawgene:
+            ax.broken_barh(gene_bar,(y+0.7,0.6),facecolor=facecolor)
+            for n,(p,w) in zip(gene_bar_name,gene_bar):
+                ax.text(p+w/2,y+0.7,n,ha='center',va='bottom')
+
+
         ax.set_xticks([])
+
         plt.tight_layout()
+
         if saveas:
             plt.savefig(saveas)
         else:
             plt.show()
 
     def condense(self,sortfunc=None):
+        """
+        combine similar primer set in the record list, pirmerset with different F2F1B1B2 are considerred different.
+        default method is use the B3 F3 primer dimer dG, if similar, use full amplicon length of Astart to Aend.
+        """
         collection = {}
         for i in self:
             key = i['F2'] + i['F1']+i['B1c'] + i['B2c']

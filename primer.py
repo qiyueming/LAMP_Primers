@@ -29,6 +29,9 @@ from collections import Counter
 # 5. heterodimer in other position of viral genome if 3' end stable.
 # 6. check repeats of special sequence in a primer i.e. 4nt repeat, 3n.t. repeat.
 
+#TODO:
+# primers that have 100% inclusivity; with core fragment 100% and LF/LB have mutations at 5'end is tolerable.
+
 
 def draw_hairpin(seq):
     r=primer3.bindings.calcHairpin(seq, mv_conc,dv_conc,dntp_conc,output_structure=True )
@@ -811,7 +814,7 @@ if __name__=='__main__':
     P2L
     PInclu
 
-    F2iter = REF.primer_iter(1000,4000,P2L,PInclu,F2filter)
+    F2iter = REF.primer_iter(1000,29000,P2L,1,TmFilter(P2Tm))
     # F2 filter : 629 possibles in ORF1ab
     # only Bat Homology filter 2749 with < 0.8
     # without homology filter but all others 5681:
@@ -819,7 +822,26 @@ if __name__=='__main__':
     # with only Tm filter 8639
     # with only GC filter: 10161
     # with only ESfilter:
+    primerslist = [next(F2iter)]
+    for s,(ps,pe) in F2iter:
+        if ps<primerslist[-1][1][1]:
+            F2iter.next_pos(primerslist[-1][1][1]-ps)
+            continue
+        primerslist.append((s,(ps,pe)))
+    len(primerslist)
+    count = []
+    for k,i in enumerate(primerslist):
+        for j in primerslist[k+1:]:
+            amplicon = j[1][0] - i[1][1]
+            if amplicon>20 and amplicon<40:
+                count.append((i[0],j[0],amplicon))
 
+    REF._check_inclusivity('A',0)
+    for k,i in enumerate(REF):
+        if ('N' in i) and (len(set(i))==2) and ('-' not in i):
+            break
+
+    next(F2iter)
     len(list(F2iter))
 
     len(list(F2iter))

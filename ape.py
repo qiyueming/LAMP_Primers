@@ -297,6 +297,11 @@ class APE:
         for i in self.features:
             if i['tag'] == name:
                 return (i['start']-1,i['end'],)
+    def get_relative_pos(self,pos):
+        "return a position realative to a gene. the pos is 0 indexed, return a 0 indexed position"
+        for i in self.features:
+            if (i['start']<=pos) and (pos<=i['end']):
+                return i['tag'],pos - i['start'] +1
 
     def copy_features_from_ape(self,ape,type='gene'):
         "copy certain type of features from another ape"
