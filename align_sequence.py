@@ -2,6 +2,8 @@ from ape import APE,REFape
 from mymodule import Alignment
 import numpy as np
 import pandas as pd
+import re
+
 def read(file):
     with open(file,'rt') as f:
         return f.read().split('\n')
@@ -10,7 +12,7 @@ def lines_to_dict(lines):
     align={}
     for line in lines:
         if line.startswith('>'):
-            key = line.split('|')[1]
+            key = line
             align[key]=[]
         else:
             align[key].append(line)
@@ -120,17 +122,18 @@ class Reference():
     """
     use sequence and mutation information from saved csv file.
     """
-    def __init__(self,csvfile=None,alnfile=None,ref='NC_045512.2'):
-        if csvfile:
-            self.df = pd.read_csv(csvfile,index_col=0)
-            self.ref = ''.join(self.df.nt)
-        if alnfile:
-            all_align = lines_to_dict(read(alnfile))
-            refseq = all_align.pop(ref)
-            self.aln = [refseq] + list(all_align.values())
-            self.aln_count = len(self.aln)
-            if not csvfile:
-                self.ref = refseq
+    def __init__(self,alnfile=None,ref=None):
+        all_align = lines_to_dict(read(alnfile))
+
+        for k,i in all_align.items():
+            if i.replace('-','') == REFape.sequence:
+                break
+        refseq = all_align.pop(k)
+        self.aln = [refseq] + list(all_align.values())
+        self.aln_count = len(self.aln)
+
+        self.ref = refseq
+
     def __getitem__(self,slice):
         return [i[slice] for i in self.aln]
 
@@ -148,7 +151,6 @@ class Reference():
                 self.genes[name] = (startindex,endindex)
             except:
                 print(f'feature {name} Not found')
-
 
     def check_homology(self,seq,end=0,direction='F'):
         "check homology of sequence to other sequences in the align. return a list of homology"
@@ -171,22 +173,18 @@ class Reference():
         "find a sequence based on ref sequence,return the sequence and position."
         try:
             pos = self.ref.index(seq)
+            span = pos+len(seq)
+            totest = self.ref[pos:span]
+            return totest,(pos,span)
         except:
-            try:
-                alphacount = self.ref.replace('-','').index(seq)
-            except:
-                print(f'<{seq}> not found')
-                return 0
-            pos = 0
-            while alphacount:
-                if self.ref[pos].isalpha(): alphacount -= 1
-                pos +=1
-        span = pos+len(seq)
-        totest = self.ref[pos:span]
-        while totest.replace('-','') != seq:
-            totest += self.ref[span]
-            span+=1
-        return totest,(pos,span)
+            pattern = re.compile('-*'.join(list(seq)))
+            match = pattern.search(self.ref)
+            if match:
+                totest = match.group()
+                return totest, match.span()
+            else:
+                raise ValueError(f'{seq} not found.')
+
 
     def check_inclusivity(self,*seq):
         if len(seq) == 1:
@@ -196,7 +194,7 @@ class Reference():
         else:
             # check multi sequcne match simutaneously.
             testcase = [self.find_seq(i) for i in seq]
-            return sum([ all( [  i[p:q]==s or (not (set(i[p:q]) <= {'A','G','C','T','-'})) for s,(p,q) in testcase]) for i in self.aln]) /self.aln_count
+            return sum([ all([i[p:q]==s or (not (set(i[p:q]) <= {'A','G','C','T','-'})) for s,(p,q) in testcase]) for i in self.aln]) /self.aln_count
 
     def _check_inclusivity(self,seq,pos):
         "check sequence that already found in ref"
@@ -300,25 +298,12 @@ class PrimerIter():
                 return seq,(i,index)
 
 alnfile = './viral_genome/all_align_0512.aln'
+aisgid_file = '/Users/hui/Desktop/WFH papers/COVID-19/Virus Genes/APE_SCRIPT/viral_genome/msa_0526/msa_0526.fasta'
 
-REF = Reference(alnfile=alnfile)
+REF = Reference(alnfile=alnfile,ref=REFape)
 BAT = Reference(alnfile='./viral_genome/CoV2+Bat.aln')
 REF.label_gene(REFape)
 BAT.label_gene(REFape)
-#
-# REF = Reference(alnfile=alnfile)
-#
-# a = REF.primer_iter(1000,1002)
-# for i in a :
-#     print(i)
-#     a.next_pos(2)
-# r=list(a)
-# len(r)
-#
-#
-# b = REF.primer_iter(1000,1002,step=-1)
-# r1=list(b)
-# r1
 
 if __name__ == '__main__':
 
