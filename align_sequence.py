@@ -185,7 +185,6 @@ class Reference():
             else:
                 raise ValueError(f'{seq} not found.')
 
-
     def check_inclusivity(self,*seq):
         if len(seq) == 1:
             seq = seq[0]
@@ -201,7 +200,6 @@ class Reference():
         sl = len(seq)
         match = [ i[pos:pos+sl]==seq or (not (set(i[pos:pos+sl]) <= {'A','G','C','T','-'})) for i in self.aln]
         return sum(match)/self.aln_count
-
 
     def primer_iter_gene(self,gene,length=(19,22),inclusivity=0.99,filter_func=None,step=1):
         start,end = self.genes[gene]
