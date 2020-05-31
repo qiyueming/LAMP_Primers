@@ -110,7 +110,6 @@ class APE:
                 return d['tag']
         return 'Unknown'
 
-
     def dumps(self):
         s = ['LOCUS','FEATURES             Location/Qualifiers']
         for f in self.features:

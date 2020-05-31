@@ -137,6 +137,30 @@ class Reference():
     def __getitem__(self,slice):
         return [i[slice] for i in self.aln]
 
+    def to_PE_format(self,start,end,inclusivity=0.99,save=True):
+        "output a sequence and homology reprensentation for PrimerExplorer."
+        seq = self.ref[start:end]
+        consensus = []
+        for i in range(start,end):
+            inclu = self._check_inclusivity(self.ref[i],i)
+            if inclu >= inclusivity:
+                consensus.append('*')
+            else:
+                consensus.append('-')
+        if save:
+            if not isinstance(save,str):
+                save = f"PE_Target_{start}-{end}"
+            with open(save,'wt') as f:
+                f.write(f'sequence={seq}\n')
+                f.write(f'consensus={"".join(consensus)}\n')
+                f.write('\n'.join(['F3_5pos=-1','F3_3pos=-1','F2_5pos=-1','F2_3pos=-1',
+                'F1c_5pos=-1','F1c_3pos=-1','B3_5pos=-1','B3_3pos=-1','B2_5pos=-1',
+                'B2_3pos=-1','B1c_5pos=-1','B1c_3pos=-1','target_range_type=0',
+                'target_range_from=','target_range_to=']))
+        else:
+            return seq,''.join(consensus)
+
+
     def label_gene(self,ape):
         self.genes={}
         for feature in ape.features:

@@ -99,16 +99,20 @@ def iter_primerset_html(files):
     """
     iterate over primerdesign result from website.
     yield: PrimerSetRecord()
-    [setname,F3,B3,FIP,BIP,LF,LB,B2c,B1c,F2,F1,gene,B3c,LFc,]
+    [setname,F3,B3,FIP,BIP,LF,LB,B2c,B1c,F2,F1,gene,B3c,LFc,PEdG]
     """
-    p1 = re.compile("""<td><span class="dnaString">\[(?P<id>\d*)\]</span></td>(?P<content>.*)<td><span class="dnaString">\[(?P=id)\]</span></td>""",flags=re.DOTALL)
+    keys = ['name','F3','B3','FIP','BIP','LF','LB','B2c','B1c','F2','F1','gene','B3c','LFc', 'PEdG']
+    # p1 = re.compile("""<td><span class="dnaString">\[(?P<id>\d*)\]</span></td>(?P<content>.*)<td><span class="dnaString">\[(?P=id)\]</span></td>""",flags=re.DOTALL)
+    p1 = re.compile("""<td>\[(?P<id>\d*)\]</td>(?P<content>.*)<td><span class="dnaString">\[(?P=id)\]</span></td>""",flags=re.DOTALL)
     p2 = re.compile('<span class="dnaString" style="color:#(?P<color>.{6});">(?P<seq>[ATCGatcg]*)</span>')
+    dG = re.compile('<td align="left">(?P<dG>[-.\d]+)</td>')
     name_counter = Counter()
     for file in files:
         with open(file,'rt') as fr:
             text = fr.read()
         for s in p1.finditer(text):
             content = s['content']
+            PEdG = float(dG.search(content)['dG'])
             out = []
             color = ""
             case = None
@@ -129,7 +133,8 @@ def iter_primerset_html(files):
             gene = REFape.name_primer(F1)
             name_counter[gene[0]] += 1
             setname = gene[0] + str(name_counter[gene[0]])
-            yield PrimerSetRecord([setname,F3,B3,FIP,BIP,'','',B2c,B1c,F2,F1,gene,B3c,''])
+
+            yield PrimerSetRecord(zip(keys,[setname,F3,B3,FIP,BIP,'','',B2c,B1c,F2,F1,gene,B3c,'',PEdG]))
 
 def iter_primerset_lamp_design_csv(*files,skiprows=None,usecols=[1,2],skipfooter=0,return_df=False):
     """
@@ -197,6 +202,45 @@ class PrimerSetRecord(OrderedDict):
     @property
     def tm(self):
         return 0
+
+    def print(self,contain=''):
+        for k,i in self.items():
+            if contain in k:
+                print(k,'=',i)
+
+
+    def to_PrimerInfo(self,name=None,inclusivity=0.99,extra=100,extra3=100,toInfo=True):
+        if not name:
+            if toInfo:
+                name = self['name']+ '_PrimerInfo'
+            else:
+                name = self['name']+ '_PE_Target'
+        F3_5pos=REF.find_seq(self['F3'])[1][0]
+        F3_3pos=REF.find_seq(self['F3'])[1][1] - F3_5pos + extra
+        F2_5pos=REF.find_seq(self['F2'])[1][0] - F3_5pos + extra
+        F2_3pos=REF.find_seq(self['F2'])[1][1] - F3_5pos + extra
+        F1c_5pos=REF.find_seq(self['F1'])[1][0] - F3_5pos + extra + 2
+        F1c_3pos=REF.find_seq(self['F1'])[1][1] - F3_5pos + extra
+        B1c_5pos=REF.find_seq(self['B1c'])[1][0] - F3_5pos + extra + 1
+        B1c_3pos=REF.find_seq(self['B1c'])[1][1] - F3_5pos + extra
+        B2_5pos=REF.find_seq(self['B2c'])[1][0] - F3_5pos + extra + 1
+        B2_3pos=REF.find_seq(self['B2c'])[1][1] - F3_5pos + extra
+        B3_5pos=REF.find_seq(self['B3c'])[1][0] - F3_5pos + extra + 1
+        B3_3pos=REF.find_seq(self['B3c'])[1][1]- F3_5pos + extra
+        seq,consensus = REF.to_PE_format(F3_5pos-extra,B3_3pos + extra3-extra + F3_5pos ,inclusivity=inclusivity,save=False)
+        with open(name,'wt') as f:
+            if toInfo:
+                f.write('designID=200429163726\nprimerID=2\n')
+                f.write(f'query={seq}\n')
+            else:
+                f.write(f'sequence={seq}\n')
+            f.write(f'consensus={consensus}\n')
+            f.write('oligo=0.1\nsodium=50.0\nmagnesium=4.0\ndg_threshold_5=-3\ndg_threshold_3=-4\n')
+            f.write("F3_5pos={}\nF3_3pos={}\nF2_5pos={}\nF2_3pos={}\nF1c_5pos={}\nF1c_3pos={}\nB1c_5pos={}\nB1c_3pos={}\nB2_5pos={}\nB2_3pos={}\nB3_5pos={}\nB3_3pos={}\n"
+             .format(extra+1,F3_3pos,F2_5pos,F2_3pos,F1c_5pos,F1c_3pos,B1c_5pos,B1c_3pos,B2_5pos,B2_3pos,B3_5pos,B3_3pos))
+
+            if not toInfo:
+                f.write('target_range_type=0\ntarget_range_from=\ntarget_range_to=\n')
 
     def __str__(self):
         return f"PrimerSetRecord {self['name']} in {self['gene']}"
@@ -490,10 +534,12 @@ class PrimerSetRecordList(list):
         ax.set_ylim([-1,len(pl)+drawgene])
         for y,p in enumerate(pl):
             plot_bar = []
-            plot_bar_name = p.fragment_order
+            plot_bar_name = []
             for n,i in p.iter('fragment'):
-                pos = REFape.locate_primer(i)
-                plot_bar.append((pos[0],pos[1]-pos[0]))
+                if i:
+                    pos = REFape.locate_primer(i)
+                    plot_bar_name.append(n)
+                    plot_bar.append((pos[0],pos[1]-pos[0]))
             # if alignwith = F3 or other fragment name, use that position.
             if alignwith:
                 _index = plot_bar_name.index(alignwith)
