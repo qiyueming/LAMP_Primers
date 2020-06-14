@@ -10,8 +10,8 @@ import primer3
 from itertools import combinations_with_replacement
 from collections import Counter,OrderedDict
 from primer_para import mv_conc,dv_conc,dntp_conc
-from resources import CROSS_GENE_FILE,CROSS_GENE_NAME
-from crossreactivity import print_ascii_structure
+from resources import CROSS_GENE_FILE,CROSS_GENE_NAME,CROSS_GENE_NAME_LONG
+# from crossreactivity import print_ascii_structure
 from Levenshtein import distance
 import re
 import matplotlib.pyplot as plt
@@ -22,8 +22,29 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 CROSS_GENE_SEQUENCE = [ APE(i).sequence for i in CROSS_GENE_FILE]
-CROSS_GENE_SEQUENCE[0][-20:]
 
+
+
+def print_ascii_structure(lines,printresult=True):
+    if not isinstance(lines,list):
+        lines = lines.ascii_structure_lines
+    l = lines[0][4:]
+    l1 = lines[1][4:]
+    start = 4
+    end = 4
+    ll = len(l)
+    for k in range(ll):
+        if l[k] != " " or l1[k]!=" ":
+            start += k
+            break
+    for j in range(len(l)):
+        if l[ll-j-1]!='-':
+            end += ll-j
+            break
+    if printresult:
+        print('\n'.join(i[start:end] for i in lines))
+    else:
+        return [i[start:end] for i in lines]
 
 def hammingR(s1,s2,):
     return sum(i==j for i,j in zip(s1,s2))
@@ -58,20 +79,20 @@ def draw_hairpin(seq):
     print(r.tm)
     print(r.ascii_structure)
 
-def HeteroDimerAnneal(primer,sequence):
-    "mv_conc,dv_conc,"
-    length = int(len(sequence)/9000+1)
-    maxtm=-100
-    align = None
-    for i in range(length):
-        totest = sequence[i*9000:(i+1)*9000+100]
-        r = primer3.bindings.calcHeterodimer(primer[0:60],totest,mv_conc,dv_conc,dntp_conc,output_structure=True)
-        tm = r.tm
-        if tm>maxtm:
-            maxtm = tm
-            align = print_ascii_structure(r,printresult=False)
-
-    return maxtm,align
+# def HeteroDimerAnneal(primer,sequence):
+#     "mv_conc,dv_conc,"
+#     length = int(len(sequence)/9000+1)
+#     maxtm=-100
+#     align = None
+#     for i in range(length):
+#         totest = sequence[i*9000:(i+1)*9000+100]
+#         r = primer3.bindings.calcHeterodimer(primer[0:60],totest,mv_conc,dv_conc,dntp_conc,output_structure=True)
+#         tm = r.tm
+#         if tm>maxtm:
+#             maxtm = tm
+#             align = print_ascii_structure(r,printresult=False)
+# 
+#     return maxtm,align
 
 
 def iter_primerset_excel():
@@ -444,13 +465,30 @@ class PrimerSetRecord(OrderedDict):
 
     def CrossReactivity(self):
         "check cross reactivity with other viruses; using hamming distance"
-        columnname = [f"{i}-CR" for i in CROSS_GENE_NAME]
+        columnname = [f"{i}-CR" for i in CROSS_GENE_NAME_LONG]
         frag = [ j for _,j in self.iter('fragment') if j]
         fragl = len(frag)
         self.update(zip( columnname,
                    (sum( homology_hamming(j,i) for j in frag )/ fragl
                     for i in CROSS_GENE_SEQUENCE)))
         return self
+
+    def Analysis_All(self):
+        return (self.Inclusivity()
+           .Amplicon_pos()
+           .CrossReactivity()
+           .Tm()
+           .NonTarget()
+           .Hairpin()
+           .PrimerDimer()
+           .LoopHairpin()
+           .ExtensionStartGCratio(forward=8)
+           .Gaps()
+           .GC_ratio()
+           .Length()
+           .CheckFilter()
+            )
+
 
 class PrimerSetRecordList(list):
     "a list collections of PrimerSetRecord, can be initiated from path to csv."

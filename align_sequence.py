@@ -150,9 +150,23 @@ class Reference():
         if save:
             if not isinstance(save,str):
                 save = f"PE_Target_{start}-{end}"
+            #  clean up - in sequences for primer explorer
+            newseq,newcon = [],[]
+            for i,j in zip(seq,consensus):
+                if i!='-':
+                    newseq.append(i)
+                    newcon.append(j)
+                else:
+                    if j =='-':
+                        newseq.append('A')
+                        newcon.append(j)
+                    else:
+                        continue
+
+
             with open(save,'wt') as f:
-                f.write(f'sequence={seq}\n')
-                f.write(f'consensus={"".join(consensus)}\n')
+                f.write(f'sequence={"".join(newseq)}\n')
+                f.write(f'consensus={"".join(newcon)}\n')
                 f.write('\n'.join(['F3_5pos=-1','F3_3pos=-1','F2_5pos=-1','F2_3pos=-1',
                 'F1c_5pos=-1','F1c_3pos=-1','B3_5pos=-1','B3_3pos=-1','B2_5pos=-1',
                 'B2_3pos=-1','B1c_5pos=-1','B1c_3pos=-1','target_range_type=0',
