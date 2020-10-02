@@ -32,6 +32,7 @@ from collections import Counter
 #TODO:
 # primers that have 100% inclusivity; with core fragment 100% and LF/LB have mutations at 5'end is tolerable.
 
+# in addition to 3'end self complementary; also check complementary between other primers
 
 def draw_hairpin(seq):
     r=primer3.bindings.calcHairpin(seq, mv_conc,dv_conc,dntp_conc,output_structure=True )
@@ -177,6 +178,9 @@ def PrimerDimerfilter(Tm=30,return_value=False):
 
 def PrimerComplexityfilter(trimer=2,tetramer=1,pentamer=0):
     "test if primer consist of tandom repeats"
+    # TODO
+    # also avoid binucleotide repeats. 
+    # trimer repeats limitation can be higher. 
     def wrap(seq):
         if sum(seq.count(i) for i in ['AAAAA','TTTTT','GGGGG','CCCCC']) > pentamer:
             return False
@@ -281,7 +285,8 @@ def main_Quality(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_prime
                           ESCfilter(N=ESC),Hairpinfilter(HairpindG),PrimerComplexityfilter())
     F2filter = CombFilter(TmFilter(P2Tm),GCfilter(GCratio),ESfilter(E3),
                           ESCfilter(N=ESC),PrimerComplexityfilter())
-    F1filter = CombFilter(TmFilter(P1Tm),GCfilter(GCratio),ESfilter(E3),ESCfilter(N=ESC),PrimerComplexityfilter())
+    F1filter = CombFilter(TmFilter(P1Tm),GCfilter(GCratio),ESfilter(E3),
+                          ESCfilter(N=ESC),PrimerComplexityfilter())
     B1cfilter = RCwrapper(F1filter)
     B2cfilter = RCwrapper(F2filter)
     B3cfilter = RCwrapper(F3filter)
