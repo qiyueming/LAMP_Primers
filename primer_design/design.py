@@ -1,19 +1,15 @@
-from ape import REFape
 from mymodule import revcomp
 import primer3
 # from mymodule import ViennaRNA
 # from mymodule.RNAstructure import RNA
 # import pandas as pd
-from align_sequence import REF,BAT
 from primer_para import *
 from datetime import datetime
 from Levenshtein import distance
 # from old_primer import print_ascii_structure
 from mymodule import ft,ProgressBar
-from ape import read_primerset_excel
 from collections import Counter
-
-
+from primer_design.config import REF,REFape,BAT
 
 # result format:
 # name:N-F1; Tm; GCratio; Inclusitivity; CrossReact;
@@ -81,6 +77,7 @@ def ESCfilter(N=6,M=4):
     return wrap
 
 def Hammingfilter(threshold = 0.3,k=2,return_value=False):
+    "return True if hamming distance of a sequence to REFape is smaller than threshold."
     lr = len(REFape.sequence)
     def wrap(seq):
         l=len(seq)
@@ -179,8 +176,8 @@ def PrimerDimerfilter(Tm=30,return_value=False):
 def PrimerComplexityfilter(trimer=2,tetramer=1,pentamer=0):
     "test if primer consist of tandom repeats"
     # TODO
-    # also avoid binucleotide repeats. 
-    # trimer repeats limitation can be higher. 
+    # also avoid binucleotide repeats.
+    # trimer repeats limitation can be higher.
     def wrap(seq):
         if sum(seq.count(i) for i in ['AAAAA','TTTTT','GGGGG','CCCCC']) > pentamer:
             return False

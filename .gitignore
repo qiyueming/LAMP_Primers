@@ -1,5 +1,6 @@
 *
 !*.py
+!*primer_design*
 !.gitignore
 *test*.*
 *run*.*

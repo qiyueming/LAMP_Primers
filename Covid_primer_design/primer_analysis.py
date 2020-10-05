@@ -118,7 +118,7 @@ def iter_primerset_excel():
 
 def iter_primerset_html(files):
     """
-    iterate over primerdesign result from website.
+    iterate over primerdesign result from PrimerExplorer website.
     yield: PrimerSetRecord()
     [setname,F3,B3,FIP,BIP,LF,LB,B2c,B1c,F2,F1,gene,B3c,LFc,PEdG]
     """
