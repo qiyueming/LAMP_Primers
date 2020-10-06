@@ -1,6 +1,7 @@
 from mymodule import Alignment
 import numpy as np
 import re
+from collections import Counter
 
 def read(file):
     with open(file,'rt') as f:
@@ -123,14 +124,21 @@ class Reference():
         all_align = lines_to_dict(read(alnfile))
         if ref:
             for k,i in all_align.items():
-                if i.replace('-','') == ref.sequence:
+                if ref and i.replace('-','') == ref.sequence:
                     break
-        refseq = all_align.pop(k)
+            refseq = all_align.pop(k)
+        else:
+            c = Counter(all_align.values())
+            refseq = c.most_common(1)[0][0]
+
         self.aln = [refseq] + list(all_align.values())
         self.aln_count = len(self.aln)
 
         self.ref = refseq
         self.genes={}
+
+    def __len__(self):
+        return len(self.ref)
 
     def __getitem__(self,slice):
         return [i[slice] for i in self.aln]
