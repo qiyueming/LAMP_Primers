@@ -15,7 +15,7 @@ def lines_to_dict(lines):
             align[key]=[]
         else:
             align[key].append(line)
-    return {i:''.join(j) for i,j in align.items()}
+    return {i:''.join(j).upper() for i,j in align.items()}
 
 def bp_align(A,B,ref='NC_045512.2'):
     "Aligne two dictionary of aligned sequence according to their common ref sequence."

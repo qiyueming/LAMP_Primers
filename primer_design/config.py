@@ -8,11 +8,11 @@ Load primer design parameters from primer_para.py
 """
 
 
-global REFape,REF,BAT
+global REFape,REF,BAT,PARAMETER
 
-def config(refApe="",refAln="",batAln=""):
-    global REFape,REF,BAT
-   
+def config(refApe="",refAln="",batAln="",para=None):
+    global REFape,REF,BAT,PARAMETER
+    PARAMETER = para
     REFape = APE(refApe) if refApe else None
     REF = Reference(refAln,REFape) if refAln else None
     if REFape:

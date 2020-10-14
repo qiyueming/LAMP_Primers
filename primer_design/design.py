@@ -3,13 +3,14 @@ import primer3
 # from mymodule import ViennaRNA
 # from mymodule.RNAstructure import RNA
 # import pandas as pd
-from primer_para import *
+
 from datetime import datetime
 from Levenshtein import distance
 # from old_primer import print_ascii_structure
 from mymodule import ft,ProgressBar
 from collections import Counter
-from primer_design.config import REF,REFape,BAT
+from .config import REF,REFape,BAT,PARAMETER
+
 
 # result format:
 # name:N-F1; Tm; GCratio; Inclusitivity; CrossReact;
@@ -30,8 +31,11 @@ from primer_design.config import REF,REFape,BAT
 
 # in addition to 3'end self complementary; also check complementary between other primers
 
+
+
+
 def draw_hairpin(seq):
-    r=primer3.bindings.calcHairpin(seq, mv_conc,dv_conc,dntp_conc,output_structure=True )
+    r=primer3.bindings.calcHairpin(seq, PARAMETER.mv_conc,PARAMETER.dv_conc,PARAMETER.dntp_conc,output_structure=True )
     print(r.dg)
     print(r.tm)
     print(r.ascii_structure)
@@ -52,9 +56,11 @@ def hamming(s1,s2,k=1):
 def TmFilter(Tm=(60,65), return_value=False):
     "return a filter have Tm threshold"
     def wrap(seq="GCCAAAAGGCTTCTACGCA"):
-        tm = primer3.bindings.calcTm(seq,mv_conc,dv_conc,dntp_conc,)
+        tm = primer3.bindings.calcTm(seq,PARAMETER.mv_conc,PARAMETER.dv_conc,PARAMETER.dntp_conc,)
         if return_value:return tm
-        return  tm >= Tm[0] and tm <= Tm[1]
+        result = tm >= Tm[0] and tm <= Tm[1]
+        if not result: print('Tm failed')
+        return result
     return wrap
 
 def GCfilter(ratio):
@@ -64,7 +70,7 @@ def GCfilter(ratio):
         return (r >=ratio[0] and r<=ratio[1])
     return wrap
 
-def ESfilter(count = E3):
+def ESfilter(count = PARAMETER.E3):
     "return a end GC count filter"
     def wrap(seq):
         return seq[-5:].count('G')+seq[-5:].count('C') >= count
@@ -132,7 +138,7 @@ def RCwrapper(func):
 def Hairpinfilter(dG=-4,check3=0,return_value=False):
     "filter out primer with high dG or 3' end stem."
     def wrap(seq="GCCAAAAGGCTTCTACGCA"):
-        r=primer3.bindings.calcHairpin(seq, mv_conc,dv_conc,dntp_conc,output_structure=True )
+        r=primer3.bindings.calcHairpin(seq, PARAMETER.mv_conc,PARAMETER.dv_conc,PARAMETER.dntp_conc,output_structure=True )
         if return_value: return r
         if not r.ascii_structure: return True
         if r.dg/1000>dG and r.ascii_structure_lines[0][len(r.ascii_structure_lines[0])-check3:]=='-'*check3: # this '--' requirement is very stringent.
@@ -164,11 +170,11 @@ def PrimerDimerfilter(Tm=30,return_value=False):
         return False
     def wrap(seq="GCCAAAAGGCTTCTACGCA",pool=[]):
         cH = primer3.bindings.calcHeterodimer
-        sd = cH(seq,seq,mv_conc,dv_conc,dntp_conc,output_structure=True)
+        sd = cH(seq,seq,PARAMETER.mv_conc,PARAMETER.dv_conc,PARAMETER.dntp_conc,output_structure=True)
         if return_value: return sd
         if checkhairpin(sd): return False
         for i in pool:
-            if checkhairpin(cH(seq,i,mv_conc,dv_conc,dntp_conc,output_structure=True)):
+            if checkhairpin(cH(seq,i,PARAMETER.mv_conc,PARAMETER.dv_conc,PARAMETER.dntp_conc,output_structure=True)):
                 return False
         return True
     return wrap
@@ -208,7 +214,7 @@ class HomologyCounter(dict):
         super()
     def __call__(self, sequence,name):
         h = BAT.check_homology(sequence)
-        self[name] = max(h) <= BatHomology
+        self[name] = max(h) <= PARAMETER.BatHomology
         for n in self.order[ self.order.index(name) + 1:]:
             self[n] = 0
         return self
@@ -217,11 +223,11 @@ class HomologyCounter(dict):
         return  max(BAT.check_homology( REF.ref[x:x+25].replace('-','') ))
 
     def check_possibility(self,starts,ends):
-        if sum(self.values()) >= BatHomologyCount: return True
+        if sum(self.values()) >= PARAMETER.BatHomologyCount: return True
         if isinstance(starts,int):
             starts = [starts]
             ends = [ends]
-        return any(self.check_homology(i)<= BatHomology  for start,end in zip(starts,ends) for i in range(start,end,2))
+        return any(self.check_homology(i)<= PARAMETER.BatHomology  for start,end in zip(starts,ends) for i in range(start,end,2))
 
 # method to save primer set.
 class PrimerSetHandler:
@@ -235,9 +241,13 @@ class PrimerSetHandler:
         self.batchcount = batchcount
 
         # read parameters and save.
-        with open('primer_para.py','rt') as f:
-            lines = f.read()
-        para = [i for i in lines.split('\n') if i and i[0].isalpha()]
+        keys = [i for i in dir(PARAMETER) if i[0].isalpha()]
+
+        # with open('primer_para.py','rt') as f:
+        #     lines = f.read()
+        # para = [i for i in lines.split('\n') if i and i[0].isalpha()]
+
+        para = [f"{i} = {getattr(PARAMETER,i,None)}" for i in keys]
         with open(self.path,'wt') as f:
             f.write('\n'.join(para))
             f.write(f"\n====> Started On {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} <====")
@@ -274,21 +284,22 @@ def main_Quality(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_prime
     else:
         A_start, A_end = REF.genes[target]
 
-    pDimerfilter = PrimerDimerfilter(PrimerDimerTm)
-    hPfilter = Hairpinfilter(HairpindG,check3=0)
-    LoopHPfilter = Hairpinfilter(LoopHairpindG,check3=0)
+    pDimerfilter = PrimerDimerfilter(PARAMETER.PrimerDimerTm)
+    hPfilter = Hairpinfilter(PARAMETER.HairpindG,check3=0)
+    LoopHPfilter = Hairpinfilter(PARAMETER.LoopHairpindG,check3=0)
 
-    F3filter = CombFilter(TmFilter(P3Tm),GCfilter(GCratio),ESfilter(E3),
-                          ESCfilter(N=ESC),Hairpinfilter(HairpindG),PrimerComplexityfilter())
-    F2filter = CombFilter(TmFilter(P2Tm),GCfilter(GCratio),ESfilter(E3),
-                          ESCfilter(N=ESC),PrimerComplexityfilter())
-    F1filter = CombFilter(TmFilter(P1Tm),GCfilter(GCratio),ESfilter(E3),
-                          ESCfilter(N=ESC),PrimerComplexityfilter())
+    F3filter = CombFilter(TmFilter(PARAMETER.P3Tm),GCfilter(PARAMETER.GCratio),ESfilter(PARAMETER.E3),
+                          ESCfilter(N=PARAMETER.ESC),Hairpinfilter(PARAMETER.HairpindG),PrimerComplexityfilter(*PARAMETER.Primer_Complexity_Threshold))
+    F2filter = CombFilter(TmFilter(PARAMETER.P2Tm),GCfilter(PARAMETER.GCratio),ESfilter(PARAMETER.E3),
+                          ESCfilter(N=PARAMETER.ESC),PrimerComplexityfilter(*PARAMETER.Primer_Complexity_Threshold))
+    F1filter = CombFilter(TmFilter(PARAMETER.P1Tm),GCfilter(PARAMETER.GCratio),ESfilter(PARAMETER.E3),
+                          ESCfilter(N=PARAMETER.ESC),PrimerComplexityfilter(*PARAMETER.Primer_Complexity_Threshold))
     B1cfilter = RCwrapper(F1filter)
     B2cfilter = RCwrapper(F2filter)
     B3cfilter = RCwrapper(F3filter)
 
-    LBfilter = CombFilter(TmFilter(LPTm),GCfilter(GCratio),ESfilter(E3),ESCfilter(N=ESC),Hairpinfilter(HairpindG),PrimerComplexityfilter())
+    LBfilter = CombFilter(TmFilter(PARAMETER.LPTm),GCfilter(PARAMETER.GCratio),
+            ESfilter(PARAMETER.E3),ESCfilter(N=PARAMETER.ESC),Hairpinfilter(PARAMETER.HairpindG),PrimerComplexityfilter(*PARAMETER.Primer_Complexity_Threshold))
     LFcfilter = RCwrapper(LBfilter)
 
     Counters = [Counter() for i in range(5)]
@@ -303,99 +314,99 @@ def main_Quality(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_prime
     print(f'Started {target} P({A_start}-{A_end})...\n')
 
 
-    F2iter = REF.primer_iter(A_start,A_end,P2L,PInclu,F2filter,)
+    F2iter = REF.primer_iter(A_start,A_end,PARAMETER.P2L,PARAMETER.PInclu,F2filter,)
     for F2, (sF2,eF2) in F2iter:
-
+        print(f'Current Position: {sF2}-{eF2}')
         F2_Count = 0
         if stop:break
-        F1_start = eF2 + g2[0]
-        F1_end = eF2 + g2[1]
+        F1_start = eF2 + PARAMETER.g2[0]
+        F1_end = eF2 + PARAMETER.g2[1]
         if not pDimerfilter(F2,[]): continue
 
-        F1iter = REF.primer_iter(F1_start,F1_end,P1L,PInclu,F1filter)
+        F1iter = REF.primer_iter(F1_start,F1_end,PARAMETER.P1L,PARAMETER.PInclu,F1filter)
 
         for F1, (sF1,eF1) in F1iter:
             F1_Count = 0
             if stop:break
-            if F2_Count > F2_CountThreshold: # if toomany with samfe F2, break out of F1 loop.
-                F2iter.next_pos(AdjustStep) # if found many in this position, move F2 forward 10 n.t.
+            if F2_Count > PARAMETER.F2_CountThreshold: # if toomany with samfe F2, break out of F1 loop.
+                F2iter.next_pos(PARAMETER.AdjustStep) # if found many in this position, move F2 forward 10 n.t.
                 break
 
-            B1c_start = eF1 + g3[0]
-            B1c_end = eF1 + g3[1]
+            B1c_start = eF1 + PARAMETER.g3[0]
+            B1c_end = eF1 + PARAMETER.g3[1]
             FIP = revcomp(F1)+F2
             maxloopfc =  revcomp(REF.ref[sF2:sF1].replace('-','')[0:59])
             if not LoopHPfilter(maxloopfc):
-                F2iter.next_pos(AdjustStep) # move F2 forward a step.
+                F2iter.next_pos(PARAMETER.AdjustStep) # move F2 forward a step.
                 break # break this F1 if strong loop formed.
-            if F1Counter[F1] >= SAME_Fragment_Threshold:continue
+            if F1Counter[F1] >= PARAMETER.SAME_Fragment_Threshold:continue
             if not hPfilter(FIP): # if FIP have hairpin move F1 forward 3 n.t.
-                F1iter.next_pos(AdjustStep)
+                F1iter.next_pos(PARAMETER.AdjustStep)
                 continue
             if not pDimerfilter(FIP,[]):
                 continue
 
-            B1citer = REF.primer_iter(B1c_start,B1c_end,P1L,PInclu,B1cfilter)
+            B1citer = REF.primer_iter(B1c_start,B1c_end,PARAMETER.P1L,PARAMETER.PInclu,B1cfilter)
             for B1c, (sB1c,eB1c) in B1citer:
                 B1c_Count = 0
                 if stop:break
-                if F1_Count > F1_CountThreshold:
-                    F1iter.next_pos(AdjustStep)
+                if F1_Count > PARAMETER.F1_CountThreshold:
+                    F1iter.next_pos(PARAMETER.AdjustStep)
                     break
-                if B1cCounter[B1c] >= SAME_Fragment_Threshold:continue
-                B2c_start = eB1c + g4[0]
-                B2c_end = eB1c + g4[1]
+                if B1cCounter[B1c] >= PARAMETER.SAME_Fragment_Threshold:continue
+                B2c_start = eB1c + PARAMETER.g4[0]
+                B2c_end = eB1c + PARAMETER.g4[1]
 
-                B2citer = REF.primer_iter(B2c_start,B2c_end,P2L,PInclu,B2cfilter)
+                B2citer = REF.primer_iter(B2c_start,B2c_end,PARAMETER.P2L,PARAMETER.PInclu,B2cfilter)
                 for B2c, (sB2c,eB2c) in B2citer:
                     B2c_Count = 0
                     if stop:break
-                    if B1c_Count > B1c_CountThreshold:
-                        B1citer.next_pos(AdjustStep)
+                    if B1c_Count > PARAMETER.B1c_CountThreshold:
+                        B1citer.next_pos(PARAMETER.AdjustStep)
                         break
-                    if eB2c - sF2 > g6[1] or eB2c - sF2 < g6[0]: # if there is no room for B2 to satisfy g6.
+                    if eB2c - sF2 > PARAMETER.g6[1] or eB2c - sF2 < PARAMETER.g6[0]: # if there is no room for B2 to satisfy g6.
                         B1citer.next_pos(1000) # end B1 iteration
                         break
-                    B3c_start = eB2c + g5[0]
-                    B3c_end = eB2c + g5[1]
+                    B3c_start = eB2c + PARAMETER.g5[0]
+                    B3c_end = eB2c + PARAMETER.g5[1]
                     BIP = B1c + revcomp(B2c)
                     maxloopr =  REF.ref[eB1c:eB2c].replace('-','')[0:59]
                     if not LoopHPfilter(maxloopr):
-                        B1citer.next_pos(AdjustStep) # move B1c forward a step
+                        B1citer.next_pos(PARAMETER.AdjustStep) # move B1c forward a step
                         break # break this B2 if strong loop formed.
-                    if B2cCounter[B2c] >= SAME_Fragment_Threshold: continue
+                    if B2cCounter[B2c] >= PARAMETER.SAME_Fragment_Threshold: continue
                     if not hPfilter(BIP): # if BIP have hairpin, move B2 forward.
-                        B2citer.next_pos(AdjustStep)
+                        B2citer.next_pos(PARAMETER.AdjustStep)
                         continue
                     if not pDimerfilter(BIP,[FIP]):
                         continue
 
 
-                    B3citer = REF.primer_iter(B3c_start,B3c_end,P3L,PInclu,B3cfilter)
+                    B3citer = REF.primer_iter(B3c_start,B3c_end,PARAMETER.P3L,PARAMETER.PInclu,B3cfilter)
                     for B3c,(sB3c,eB3c) in B3citer:
                         B3c_Count = 0
                         if stop: break
-                        if B2c_Count > B2c_CountThreshold:
-                            B2citer.next_pos(AdjustStep)
+                        if B2c_Count > PARAMETER.B2c_CountThreshold:
+                            B2citer.next_pos(PARAMETER.AdjustStep)
                             break
-                        if B3cCounter[B3c] >= SAME_Fragment_Threshold:continue
+                        if B3cCounter[B3c] >= PARAMETER.SAME_Fragment_Threshold:continue
                         B3 = revcomp(B3c)
                         if not pDimerfilter(B3,[FIP,BIP]): continue
-                        F3_start = sF2-g1[1]-P3L[1]
-                        F3_end = sF2 - g1[0]- P3L[0]
+                        F3_start = sF2-PARAMETER.g1[1]-PARAMETER.P3L[1]
+                        F3_end = sF2 - PARAMETER.g1[0]- PARAMETER.P3L[0]
 
-                        F3iter = REF.primer_iter(F3_start,F3_end,P3L,PInclu,F3filter,step=-1)
+                        F3iter = REF.primer_iter(F3_start,F3_end,PARAMETER.P3L,PARAMETER.PInclu,F3filter,step=-1)
                         for F3,(sF3,eF3) in F3iter:
                             if stop: break
-                            if B3c_Count >B3c_CountThreshold:
-                                B3citer.next_pos(AdjustStep)
+                            if B3c_Count >PARAMETER.B3c_CountThreshold:
+                                B3citer.next_pos(PARAMETER.AdjustStep)
                                 break
-                            if F3Counter[F3] >= SAME_Fragment_Threshold:continue
+                            if F3Counter[F3] >= PARAMETER.SAME_Fragment_Threshold:continue
                             if eF3>sF2: continue # in case overlap happened.
                             if not pDimerfilter(F3,[B3,FIP,BIP]): continue
 
                             LFfound = False
-                            for LFc, (sLFc,eLFc) in REF.primer_iter(eF2,sF1-LPL[0],LPL,LoopInclu,LFcfilter):
+                            for LFc, (sLFc,eLFc) in REF.primer_iter(eF2,sF1-PARAMETER.LPL[0],PARAMETER.LPL,PARAMETER.LoopInclu,LFcfilter):
                                 LF = revcomp(LFc)
                                 if eLFc > sF1: break
                                 if not pDimerfilter(LF,[F3,B3,BIP,FIP]): continue
@@ -404,7 +415,7 @@ def main_Quality(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_prime
                             if not LFfound: continue
 
                             LBfound = False
-                            for LB, (sLB,eLB) in REF.primer_iter(eB1c,sB2c-LPL[0],LPL,LoopInclu,LBfilter):
+                            for LB, (sLB,eLB) in REF.primer_iter(eB1c,sB2c-PARAMETER.LPL[0],PARAMETER.LPL,PARAMETER.LoopInclu,LBfilter):
                                 if eLB > sB2c: break
                                 if not pDimerfilter(LB,[F3,B3,BIP,FIP,LF]): continue
                                 LBfound = True
@@ -446,22 +457,22 @@ def main_Counter(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_prime
     else:
         A_start, A_end = REF.genes[target]
 
-    pDimerfilter = PrimerDimerfilter(PrimerDimerTm)
-    hPfilter = Hairpinfilter(HairpindG,check3=0)
-    LoopHPfilter = Hairpinfilter(LoopHairpindG,check3=0)
-    hOmofilterF = HoMofilter(BatHomology,BatHomologyEnd,'F')
-    hOmofilterR = HoMofilter(BatHomology,BatHomologyEnd,'R')
+    pDimerfilter = PrimerDimerfilter(PARAMETER.PrimerDimerTm)
+    hPfilter = Hairpinfilter(PARAMETER.HairpindG,check3=0)
+    LoopHPfilter = Hairpinfilter(PARAMETER.LoopHairpindG,check3=0)
+    hOmofilterF = HoMofilter(PARAMETER.BatHomology,PARAMETER.BatHomologyEnd,'F')
+    hOmofilterR = HoMofilter(PARAMETER.BatHomology,PARAMETER.BatHomologyEnd,'R')
 
-    F3filter = CombFilter(TmFilter(P3Tm),GCfilter(GCratio),ESfilter(E3),
-                          ESCfilter(N=ESC),Hairpinfilter(HairpindG),PrimerComplexityfilter())
-    F2filter = CombFilter(TmFilter(P2Tm),GCfilter(GCratio),ESfilter(E3),
-                          ESCfilter(N=ESC),PrimerComplexityfilter())
-    F1filter = CombFilter(TmFilter(P1Tm),GCfilter(GCratio),ESfilter(E3),ESCfilter(N=ESC),PrimerComplexityfilter())
+    F3filter = CombFilter(TmFilter(PARAMETER.P3Tm),GCfilter(PARAMETER.GCratio),ESfilter(PARAMETER.E3),
+                          ESCfilter(N=PARAMETER.ESC),Hairpinfilter(PARAMETER.HairpindG),PrimerComplexityfilter())
+    F2filter = CombFilter(TmFilter(PARAMETER.P2Tm),GCfilter(PARAMETER.GCratio),ESfilter(PARAMETER.E3),
+                          ESCfilter(N=PARAMETER.ESC),PrimerComplexityfilter())
+    F1filter = CombFilter(TmFilter(PARAMETER.P1Tm),GCfilter(PARAMETER.GCratio),ESfilter(PARAMETER.E3),ESCfilter(N=PARAMETER.ESC),PrimerComplexityfilter())
     B1cfilter = RCwrapper(F1filter)
     B2cfilter = RCwrapper(F2filter)
     B3cfilter = RCwrapper(F3filter)
 
-    LBfilter = CombFilter(TmFilter(LPTm),GCfilter(GCratio),ESfilter(E3),ESCfilter(N=ESC),Hairpinfilter(HairpindG),PrimerComplexityfilter())
+    LBfilter = CombFilter(TmFilter(PARAMETER.LPTm),GCfilter(PARAMETER.GCratio),ESfilter(PARAMETER.E3),ESCfilter(N=PARAMETER.ESC),Hairpinfilter(PARAMETER.HairpindG),PrimerComplexityfilter())
     LFcfilter = RCwrapper(LBfilter)
 
     homologyCounter = HomologyCounter(order=('F2','F3','F1','B1c','B2c','B3c'))
@@ -478,104 +489,106 @@ def main_Counter(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_prime
     print(f'Started {target} P({A_start}-{A_end})...\n')
     progress = ProgressBar(limits=(A_start,A_end),prefix=f'P({A_start}-{A_end})')
 
-    F2iter = REF.primer_iter(A_start,A_end,P2L,PInclu,F2filter,)
+    F2iter = REF.primer_iter(A_start,A_end,PARAMETER.P2L,PARAMETER.PInclu,F2filter,)
     for F2, (sF2,eF2) in F2iter:
         progress(sF2)
         F2_Count = 0
         if stop:break
-        if not homologyCounter(F2,'F2').check_possibility(sF2-g1[1]-P3L[1],sF2+g6[1]+g5[1]+P3L[1]): break
-        F1_start = eF2 + g2[0]
-        F1_end = eF2 + g2[1]
+        if not homologyCounter(F2,'F2').check_possibility(sF2-PARAMETER.g1[1]-PARAMETER.P3L[1],sF2+PARAMETER.g6[1]+PARAMETER.g5[1]+PARAMETER.P3L[1]): break
+        F1_start = eF2 + PARAMETER.g2[0]
+        F1_end = eF2 + PARAMETER.g2[1]
         if not pDimerfilter(F2,[]): continue
 
-        F1iter = REF.primer_iter(F1_start,F1_end,P1L,PInclu,F1filter)
+        F1iter = REF.primer_iter(F1_start,F1_end,PARAMETER.P1L,PARAMETER.PInclu,F1filter)
 
         for F1, (sF1,eF1) in F1iter:
             F1_Count = 0
             if stop:break
-            if not homologyCounter(F1,'F1').check_possibility((sF2-g1[1]-P3L[1],eF1), (sF2, eF1+g3[1]+P1L[1]+g4[1]+P2L[1]+g5[1]+P3L[1])): break
-            if F2_Count > F2_CountThreshold: # if toomany with samfe F2, break out of F1 loop.
+            if not homologyCounter(F1,'F1').check_possibility((sF2-PARAMETER.g1[1]-PARAMETER.P3L[1],eF1), 
+                        (sF2, eF1+PARAMETER.g3[1]+PARAMETER.P1L[1]+PARAMETER.g4[1]+PARAMETER.P2L[1]+PARAMETER.g5[1]+PARAMETER.P3L[1])): break
+            if F2_Count > PARAMETER.F2_CountThreshold: # if toomany with samfe F2, break out of F1 loop.
                 F2iter.next_pos(10) # if found many in this position, move F2 forward 10 n.t.
                 break
 
-            B1c_start = eF1 + g3[0]
-            B1c_end = eF1 + g3[1]
+            B1c_start = eF1 + PARAMETER.g3[0]
+            B1c_end = eF1 + PARAMETER.g3[1]
             FIP = revcomp(F1)+F2
             maxloopfc =  revcomp(REF.ref[sF2:sF1].replace('-','')[0:59])
             if not LoopHPfilter(maxloopfc):
-                F2iter.next_pos(AdjustStep) # move F2 forward a step.
+                F2iter.next_pos(PARAMETER.AdjustStep) # move F2 forward a step.
                 break # break this F1 if strong loop formed.
-            if F1Counter[F1] >= SAME_Fragment_Threshold:continue
+            if F1Counter[F1] >= PARAMETER.SAME_Fragment_Threshold:continue
             if not hPfilter(FIP): # if FIP have hairpin move F1 forward 3 n.t.
-                F1iter.next_pos(AdjustStep)
+                F1iter.next_pos(PARAMETER.AdjustStep)
                 continue
             if not pDimerfilter(FIP,[]):
                 continue
 
-            B1citer = REF.primer_iter(B1c_start,B1c_end,P1L,PInclu,B1cfilter)
+            B1citer = REF.primer_iter(B1c_start,B1c_end,PARAMETER.P1L,PARAMETER.PInclu,B1cfilter)
             for B1c, (sB1c,eB1c) in B1citer:
                 B1c_Count = 0
                 if stop:break
-                if not homologyCounter(B1c,'B1c').check_possibility((sF2-g1[1]-P3L[1],eB1c), (sF2, eB1c+g4[1]+P2L[1]+g5[1]+P3L[1])): break
-                if F1_Count > F1_CountThreshold:
+                if not homologyCounter(B1c,'B1c').check_possibility((sF2-PARAMETER.g1[1]-PARAMETER.P3L[1],eB1c), 
+                                    (sF2, eB1c+PARAMETER.g4[1]+PARAMETER.P2L[1]+PARAMETER.g5[1]+PARAMETER.P3L[1])): break
+                if F1_Count > PARAMETER.F1_CountThreshold:
                     F1iter.next_pos(5)
                     break
-                if B1cCounter[B1c] >= SAME_Fragment_Threshold:continue
-                B2c_start = eB1c + g4[0]
-                B2c_end = eB1c + g4[1]
+                if B1cCounter[B1c] >= PARAMETER.SAME_Fragment_Threshold:continue
+                B2c_start = eB1c + PARAMETER.g4[0]
+                B2c_end = eB1c + PARAMETER.g4[1]
 
-                B2citer = REF.primer_iter(B2c_start,B2c_end,P2L,PInclu,B2cfilter)
+                B2citer = REF.primer_iter(B2c_start,B2c_end,PARAMETER.P2L,PARAMETER.PInclu,B2cfilter)
                 for B2c, (sB2c,eB2c) in B2citer:
                     B2c_Count = 0
                     if stop:break
-                    if not homologyCounter(B2c,'B2c').check_possibility((sF2-g1[1]-P3L[1],eB2c), (sF2, eB2c+g5[1]+P3L[1])): break
-                    if B1c_Count > B1c_CountThreshold:
+                    if not homologyCounter(B2c,'B2c').check_possibility((sF2-PARAMETER.g1[1]-PARAMETER.P3L[1],eB2c), (sF2, eB2c+PARAMETER.g5[1]+PARAMETER.P3L[1])): break
+                    if B1c_Count > PARAMETER.B1c_CountThreshold:
                         B1citer.next_pos(5)
                         break
-                    if eB2c - sF2 > g6[1] or eB2c - sF2 < g6[0]: # if there is no room for B2 to satisfy g6.
+                    if eB2c - sF2 > PARAMETER.g6[1] or eB2c - sF2 < PARAMETER.g6[0]: # if there is no room for B2 to satisfy g6.
                         B1citer.next_pos(1000) # end B1 iteration
                         break
-                    B3c_start = eB2c + g5[0]
-                    B3c_end = eB2c + g5[1]
+                    B3c_start = eB2c + PARAMETER.g5[0]
+                    B3c_end = eB2c + PARAMETER.g5[1]
                     BIP = B1c + revcomp(B2c)
                     maxloopr =  REF.ref[eB1c:eB2c].replace('-','')[0:59]
                     if not LoopHPfilter(maxloopr):
-                        B1citer.next_pos(AdjustStep) # move B1c forward a step
+                        B1citer.next_pos(PARAMETER.AdjustStep) # move B1c forward a step
                         break # break this B2 if strong loop formed.
-                    if B2cCounter[B2c] >= SAME_Fragment_Threshold: continue
+                    if B2cCounter[B2c] >= PARAMETER.SAME_Fragment_Threshold: continue
                     if not hPfilter(BIP): # if BIP have hairpin, move B2 forward.
-                        B2citer.next_pos(AdjustStep)
+                        B2citer.next_pos(PARAMETER.AdjustStep)
                         continue
                     if not pDimerfilter(BIP,[FIP]):
                         continue
 
 
-                    B3citer = REF.primer_iter(B3c_start,B3c_end,P3L,PInclu,B3cfilter)
+                    B3citer = REF.primer_iter(B3c_start,B3c_end,PARAMETER.P3L,PARAMETER.PInclu,B3cfilter)
                     for B3c,(sB3c,eB3c) in B3citer:
                         B3c_Count = 0
                         if stop: break
-                        if not homologyCounter(B3c,'B3c').check_possibility(sF2-g1[1]-P3L[1],sF2): break
-                        if B2c_Count > B2c_CountThreshold:
+                        if not homologyCounter(B3c,'B3c').check_possibility(sF2-PARAMETER.g1[1]-PARAMETER.P3L[1],sF2): break
+                        if B2c_Count > PARAMETER.B2c_CountThreshold:
                             B2citer.next_pos(5)
                             break
-                        if B3cCounter[B3c] >= SAME_Fragment_Threshold:continue
+                        if B3cCounter[B3c] >= PARAMETER.SAME_Fragment_Threshold:continue
                         B3 = revcomp(B3c)
                         if not pDimerfilter(B3,[FIP,BIP]): continue
-                        F3_start = sF2-g1[1]-P3L[1]
-                        F3_end = sF2 - g1[0]- P3L[0]
+                        F3_start = sF2-PARAMETER.g1[1]-PARAMETER.P3L[1]
+                        F3_end = sF2 - PARAMETER.g1[0]- PARAMETER.P3L[0]
 
-                        F3iter = REF.primer_iter(F3_start,F3_end,P3L,PInclu,F3filter,step=-1)
+                        F3iter = REF.primer_iter(F3_start,F3_end,PARAMETER.P3L,PARAMETER.PInclu,F3filter,step=-1)
                         for F3,(sF3,eF3) in F3iter:
                             if stop: break
-                            if B3c_Count >B3c_CountThreshold:
+                            if B3c_Count >PARAMETER.B3c_CountThreshold:
                                 B3citer.next_pos(5)
                                 break
-                            if F3Counter[F3] >= SAME_Fragment_Threshold:continue
+                            if F3Counter[F3] >= PARAMETER.SAME_Fragment_Threshold:continue
                             if eF3>sF2: continue # in case overlap happened.
                             if not pDimerfilter(F3,[B3,FIP,BIP]): continue
 
                             LFfound = False
-                            for LFc, (sLFc,eLFc) in REF.primer_iter(eF2,sF1-LPL[0],LPL,LoopInclu,LFcfilter):
+                            for LFc, (sLFc,eLFc) in REF.primer_iter(eF2,sF1-PARAMETER.LPL[0],PARAMETER.LPL,PARAMETER.LoopInclu,LFcfilter):
                                 LF = revcomp(LFc)
                                 if eLFc > sF1: break
                                 if not pDimerfilter(LF,[F3,B3,BIP,FIP]): continue
@@ -584,7 +597,7 @@ def main_Counter(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_prime
                             if not LFfound: continue
 
                             LBfound = False
-                            for LB, (sLB,eLB) in REF.primer_iter(eB1c,sB2c-LPL[0],LPL,LoopInclu,LBfilter):
+                            for LB, (sLB,eLB) in REF.primer_iter(eB1c,sB2c-PARAMETER.LPL[0],PARAMETER.LPL,PARAMETER.LoopInclu,LBfilter):
                                 if eLB > sB2c: break
                                 if not pDimerfilter(LB,[F3,B3,BIP,FIP,LF]): continue
                                 LBfound = True
@@ -593,7 +606,7 @@ def main_Counter(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_prime
 
                             primerset = (F3,F2,F1,B1c,B2c,B3c,LFc,LB)
                             # save if 3 of the core primers have homology specificity.
-                            if sum([hOmofilterF(i) for i in primerset[0:3]] + [hOmofilterR(i) for i in primerset[3:6]])>=BatHomologyCount:
+                            if sum([hOmofilterF(i) for i in primerset[0:3]] + [hOmofilterR(i) for i in primerset[3:6]])>=PARAMETER.BatHomologyCount:
                                 SavePrimerSet(primerset)
                                 primerset_counter += 1
                                 F2_Count+=1
@@ -628,22 +641,22 @@ def main_Homology(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_prim
     else:
         A_start, A_end = REF.genes[target]
 
-    pDimerfilter = PrimerDimerfilter(PrimerDimerTm)
-    hPfilter = Hairpinfilter(HairpindG,check3=0)
-    LoopHPfilter = Hairpinfilter(LoopHairpindG,check3=0)
-    hOmofilterF = HoMofilter(BatHomology,BatHomologyEnd,'F')
-    hOmofilterR = HoMofilter(BatHomology,BatHomologyEnd,'R')
+    pDimerfilter = PrimerDimerfilter(PARAMETER.PrimerDimerTm)
+    hPfilter = Hairpinfilter(PARAMETER.HairpindG,check3=0)
+    LoopHPfilter = Hairpinfilter(PARAMETER.LoopHairpindG,check3=0)
+    hOmofilterF = HoMofilter(PARAMETER.BatHomology,PARAMETER.BatHomologyEnd,'F')
+    hOmofilterR = HoMofilter(PARAMETER.BatHomology,PARAMETER.BatHomologyEnd,'R')
 
-    F3filter = CombFilter(TmFilter(P3Tm),GCfilter(GCratio),ESfilter(E3),
-                          ESCfilter(N=ESC),Hairpinfilter(HairpindG),PrimerComplexityfilter())
-    F2filter = CombFilter(TmFilter(P2Tm),GCfilter(GCratio),ESfilter(E3),
-                          ESCfilter(N=ESC),PrimerComplexityfilter())
-    F1filter = CombFilter(TmFilter(P1Tm),GCfilter(GCratio),ESfilter(E3),ESCfilter(N=ESC),PrimerComplexityfilter())
+    F3filter = CombFilter(TmFilter(PARAMETER.P3Tm),GCfilter(PARAMETER.GCratio),ESfilter(PARAMETER.E3),
+                          ESCfilter(N=PARAMETER.ESC),Hairpinfilter(PARAMETER.HairpindG),PrimerComplexityfilter())
+    F2filter = CombFilter(TmFilter(PARAMETER.P2Tm),GCfilter(PARAMETER.GCratio),ESfilter(PARAMETER.E3),
+                          ESCfilter(N=PARAMETER.ESC),PrimerComplexityfilter())
+    F1filter = CombFilter(TmFilter(PARAMETER.P1Tm),GCfilter(PARAMETER.GCratio),ESfilter(PARAMETER.E3),ESCfilter(N=PARAMETER.ESC),PrimerComplexityfilter())
     B1cfilter = RCwrapper(F1filter)
     B2cfilter = RCwrapper(F2filter)
     B3cfilter = RCwrapper(F3filter)
 
-    LBfilter = CombFilter(TmFilter(LPTm),GCfilter(GCratio),ESfilter(E3),ESCfilter(N=ESC),Hairpinfilter(HairpindG),PrimerComplexityfilter())
+    LBfilter = CombFilter(TmFilter(PARAMETER.LPTm),GCfilter(PARAMETER.GCratio),ESfilter(PARAMETER.E3),ESCfilter(N=PARAMETER.ESC),Hairpinfilter(PARAMETER.HairpindG),PrimerComplexityfilter())
     LFcfilter = RCwrapper(LBfilter)
 
     homologyCounter = HomologyCounter(order=('F2','F3','F1','B1c','B2c','B3c'))
@@ -660,103 +673,103 @@ def main_Homology(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_prim
     print(f'Started {target} P({A_start}-{A_end})...\n')
     progress = ProgressBar(limits=(A_start,A_end),prefix=f'P({A_start}-{A_end})')
 
-    F2iter = REF.primer_iter(A_start,A_end,P2L,PInclu,F2filter,)
+    F2iter = REF.primer_iter(A_start,A_end,PARAMETER.P2L,PARAMETER.PInclu,F2filter,)
     for F2, (sF2,eF2) in F2iter:
         progress(sF2)
         F2_Count = 0
         if stop:break
-        if not homologyCounter(F2,'F2').check_possibility(sF2-g1[1]-P3L[1],sF2+g6[1]+g5[1]+P3L[1]): break
-        F1_start = eF2 + g2[0]
-        F1_end = eF2 + g2[1]
+        if not homologyCounter(F2,'F2').check_possibility(sF2-PARAMETER.g1[1]-PARAMETER.P3L[1],sF2+PARAMETER.g6[1]+PARAMETER.g5[1]+PARAMETER.P3L[1]): break
+        F1_start = eF2 + PARAMETER.g2[0]
+        F1_end = eF2 + PARAMETER.g2[1]
         if not pDimerfilter(F2,[]): continue
 
-        F1iter = REF.primer_iter(F1_start,F1_end,P1L,PInclu,F1filter)
+        F1iter = REF.primer_iter(F1_start,F1_end,PARAMETER.P1L,PARAMETER.PInclu,F1filter)
 
         for F1, (sF1,eF1) in F1iter:
             F1_Count = 0
             if stop:break
-            if not homologyCounter(F1,'F1').check_possibility((sF2-g1[1]-P3L[1],eF1), (sF2, eF1+g3[1]+P1L[1]+g4[1]+P2L[1]+g5[1]+P3L[1])): break
-            if F2_Count > F2_CountThreshold: # if toomany with samfe F2, break out of F1 loop.
+            if not homologyCounter(F1,'F1').check_possibility((sF2-PARAMETER.g1[1]-PARAMETER.P3L[1],eF1), (sF2, eF1+PARAMETER.g3[1]+PARAMETER.P1L[1]+PARAMETER.g4[1]+PARAMETER.P2L[1]+PARAMETER.g5[1]+PARAMETER.P3L[1])): break
+            if F2_Count > PARAMETER.F2_CountThreshold: # if toomany with samfe F2, break out of F1 loop.
 
                 break
 
-            B1c_start = eF1 + g3[0]
-            B1c_end = eF1 + g3[1]
+            B1c_start = eF1 + PARAMETER.g3[0]
+            B1c_end = eF1 + PARAMETER.g3[1]
             FIP = revcomp(F1)+F2
             maxloopfc =  revcomp(REF.ref[sF2:sF1].replace('-','')[0:59])
             if not LoopHPfilter(maxloopfc):
-                F2iter.next_pos(AdjustStep) # move F2 forward a step.
+                F2iter.next_pos(PARAMETER.AdjustStep) # move F2 forward a step.
                 break # break this F1 if strong loop formed.
-            if F1Counter[F1] >= SAME_Fragment_Threshold:continue
+            if F1Counter[F1] >= PARAMETER.SAME_Fragment_Threshold:continue
             if not hPfilter(FIP): # if FIP have hairpin move F1 forward 3 n.t.
-                F1iter.next_pos(AdjustStep)
+                F1iter.next_pos(PARAMETER.AdjustStep)
                 continue
             if not pDimerfilter(FIP,[]):
                 continue
 
-            B1citer = REF.primer_iter(B1c_start,B1c_end,P1L,PInclu,B1cfilter)
+            B1citer = REF.primer_iter(B1c_start,B1c_end,PARAMETER.P1L,PARAMETER.PInclu,B1cfilter)
             for B1c, (sB1c,eB1c) in B1citer:
                 B1c_Count = 0
                 if stop:break
-                if not homologyCounter(B1c,'B1c').check_possibility((sF2-g1[1]-P3L[1],eB1c), (sF2, eB1c+g4[1]+P2L[1]+g5[1]+P3L[1])): break
-                if F1_Count > F1_CountThreshold:
+                if not homologyCounter(B1c,'B1c').check_possibility((sF2-PARAMETER.g1[1]-PARAMETER.P3L[1],eB1c), (sF2, eB1c+PARAMETER.g4[1]+PARAMETER.P2L[1]+PARAMETER.g5[1]+PARAMETER.P3L[1])): break
+                if F1_Count > PARAMETER.F1_CountThreshold:
                     break
-                if B1cCounter[B1c] >= SAME_Fragment_Threshold:continue
-                B2c_start = eB1c + g4[0]
-                B2c_end = eB1c + g4[1]
+                if B1cCounter[B1c] >= PARAMETER.SAME_Fragment_Threshold:continue
+                B2c_start = eB1c + PARAMETER.g4[0]
+                B2c_end = eB1c + PARAMETER.g4[1]
 
-                B2citer = REF.primer_iter(B2c_start,B2c_end,P2L,PInclu,B2cfilter)
+                B2citer = REF.primer_iter(B2c_start,B2c_end,PARAMETER.P2L,PARAMETER.PInclu,B2cfilter)
                 for B2c, (sB2c,eB2c) in B2citer:
                     B2c_Count = 0
                     if stop:break
-                    if not homologyCounter(B2c,'B2c').check_possibility((sF2-g1[1]-P3L[1],eB2c), (sF2, eB2c+g5[1]+P3L[1])): break
-                    if B1c_Count > B1c_CountThreshold:
+                    if not homologyCounter(B2c,'B2c').check_possibility((sF2-PARAMETER.g1[1]-PARAMETER.P3L[1],eB2c), (sF2, eB2c+PARAMETER.g5[1]+PARAMETER.P3L[1])): break
+                    if B1c_Count > PARAMETER.B1c_CountThreshold:
 
                         break
-                    if eB2c - sF2 > g6[1] or eB2c - sF2 < g6[0]: # if there is no room for B2 to satisfy g6.
+                    if eB2c - sF2 > PARAMETER.g6[1] or eB2c - sF2 < PARAMETER.g6[0]: # if there is no room for B2 to satisfy g6.
                         B1citer.next_pos(1000) # end B1 iteration
                         break
-                    B3c_start = eB2c + g5[0]
-                    B3c_end = eB2c + g5[1]
+                    B3c_start = eB2c + PARAMETER.g5[0]
+                    B3c_end = eB2c + PARAMETER.g5[1]
                     BIP = B1c + revcomp(B2c)
                     maxloopr =  REF.ref[eB1c:eB2c].replace('-','')[0:59]
                     if not LoopHPfilter(maxloopr):
-                        B1citer.next_pos(AdjustStep) # move B1c forward a step
+                        B1citer.next_pos(PARAMETER.AdjustStep) # move B1c forward a step
                         break # break this B2 if strong loop formed.
-                    if B2cCounter[B2c] >= SAME_Fragment_Threshold: continue
+                    if B2cCounter[B2c] >= PARAMETER.SAME_Fragment_Threshold: continue
                     if not hPfilter(BIP): # if BIP have hairpin, move B2 forward.
-                        B2citer.next_pos(AdjustStep)
+                        B2citer.next_pos(PARAMETER.AdjustStep)
                         continue
                     if not pDimerfilter(BIP,[FIP]):
                         continue
 
 
-                    B3citer = REF.primer_iter(B3c_start,B3c_end,P3L,PInclu,B3cfilter)
+                    B3citer = REF.primer_iter(B3c_start,B3c_end,PARAMETER.P3L,PARAMETER.PInclu,B3cfilter)
                     for B3c,(sB3c,eB3c) in B3citer:
                         B3c_Count = 0
                         if stop: break
-                        if not homologyCounter(B3c,'B3c').check_possibility(sF2-g1[1]-P3L[1],sF2): break
-                        if B2c_Count > B2c_CountThreshold:
+                        if not homologyCounter(B3c,'B3c').check_possibility(sF2-PARAMETER.g1[1]-PARAMETER.P3L[1],sF2): break
+                        if B2c_Count > PARAMETER.B2c_CountThreshold:
 
                             break
-                        if B3cCounter[B3c] >= SAME_Fragment_Threshold:continue
+                        if B3cCounter[B3c] >= PARAMETER.SAME_Fragment_Threshold:continue
                         B3 = revcomp(B3c)
                         if not pDimerfilter(B3,[FIP,BIP]): continue
-                        F3_start = sF2-g1[1]-P3L[1]
-                        F3_end = sF2 - g1[0]- P3L[0]
+                        F3_start = sF2-PARAMETER.g1[1]-PARAMETER.P3L[1]
+                        F3_end = sF2 - PARAMETER.g1[0]- PARAMETER.P3L[0]
 
-                        F3iter = REF.primer_iter(F3_start,F3_end,P3L,PInclu,F3filter,step=-1)
+                        F3iter = REF.primer_iter(F3_start,F3_end,PARAMETER.P3L,PARAMETER.PInclu,F3filter,step=-1)
                         for F3,(sF3,eF3) in F3iter:
                             if stop: break
-                            if B3c_Count >B3c_CountThreshold:
+                            if B3c_Count >PARAMETER.B3c_CountThreshold:
 
                                 break
-                            if F3Counter[F3] >= SAME_Fragment_Threshold:continue
+                            if F3Counter[F3] >= PARAMETER.SAME_Fragment_Threshold:continue
                             if eF3>sF2: continue # in case overlap happened.
                             if not pDimerfilter(F3,[B3,FIP,BIP]): continue
 
                             LFfound = False
-                            for LFc, (sLFc,eLFc) in REF.primer_iter(eF2,sF1-LPL[0],LPL,LoopInclu,LFcfilter):
+                            for LFc, (sLFc,eLFc) in REF.primer_iter(eF2,sF1-PARAMETER.LPL[0],PARAMETER.LPL,PARAMETER.LoopInclu,LFcfilter):
                                 LF = revcomp(LFc)
                                 if eLFc > sF1: break
                                 if not pDimerfilter(LF,[F3,B3,BIP,FIP]): continue
@@ -765,7 +778,7 @@ def main_Homology(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_prim
                             if not LFfound: continue
 
                             LBfound = False
-                            for LB, (sLB,eLB) in REF.primer_iter(eB1c,sB2c-LPL[0],LPL,LoopInclu,LBfilter):
+                            for LB, (sLB,eLB) in REF.primer_iter(eB1c,sB2c-PARAMETER.LPL[0],PARAMETER.LPL,PARAMETER.LoopInclu,LBfilter):
                                 if eLB > sB2c: break
                                 if not pDimerfilter(LB,[F3,B3,BIP,FIP,LF]): continue
                                 LBfound = True
@@ -774,7 +787,7 @@ def main_Homology(target=None,span=None,MAX_primerset=1000,savepath='./LAMP_prim
 
                             primerset = (F3,F2,F1,B1c,B2c,B3c,LFc,LB)
                             # save if 3 of the core primers have homology specificity.
-                            if average_primerset_homology(primerset)<=BatHomology:
+                            if average_primerset_homology(primerset)<=PARAMETER.BatHomology:
                                 SavePrimerSet(primerset)
                                 primerset_counter += 1
                                 F2_Count+=1

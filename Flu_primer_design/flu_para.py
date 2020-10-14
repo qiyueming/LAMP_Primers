@@ -67,5 +67,5 @@ B3c_CountThreshold = 4
 Primer_Complexity_Threshold = (4,3,2)
 
 # max number of the ssame fragment.
-SAME_Fragment_Threshold = 10
-PRIMER_DESIGN_METHOD = "main_Inclusivity"
+SAME_Fragment_Threshold = 100
+PRIMER_DESIGN_METHOD = "main_Quality"

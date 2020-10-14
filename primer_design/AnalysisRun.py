@@ -7,7 +7,7 @@ config(refApe="",
 
 
 """Run lamp primers analysis"""
-from primer_analysis import PrimerSetRecordList,PrimerSetRecord
+from primer_design.analysis import PrimerSetRecordList,PrimerSetRecord
 # from multiprocessing import Process
 from mymodule import poolMap
 from datetime import datetime
